@@ -1,6 +1,9 @@
 import cron from 'node-cron';
 import prisma from '../database/client.js';
+import { RETRY_DELAYS_MS, sendFailureAlert, sleep } from '../services/alert.service.js';
 import { publishPostForLocation } from '../services/posts.service.js';
+
+const MAX_RETRIES = 3;
 
 /**
  * Rough category label for post copy when no category is stored in DB.
@@ -39,6 +42,36 @@ async function safeCreateAuditLog(data) {
 }
 
 /**
+ * Publish with up to 3 retries (5s between attempts). Returns post or throws last error.
+ */
+async function publishLocationWithRetries(locationId, payload) {
+  let lastError;
+  const attempts = 1 + MAX_RETRIES;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await publishPostForLocation(locationId, payload);
+    } catch (err) {
+      lastError = err;
+      if (attempt < attempts) {
+        console.warn(
+          JSON.stringify({
+            event: 'daily_post_retry',
+            locationId,
+            attempt,
+            maxAttempts: attempts,
+            error: err?.message ?? String(err),
+          }),
+        );
+        await sleep(RETRY_DELAYS_MS);
+      }
+    }
+  }
+
+  throw lastError;
+}
+
+/**
  * One run: active locations → template post → publish service (respects MOCK_MODE).
  * @returns {Promise<{ locationCount: number; ok: number; failed: number; results: Array<{ locationId: string; success: boolean; postId?: string; error?: string }> }>}
  */
@@ -69,7 +102,7 @@ export async function runDailyPostPublisher() {
     const content = buildDailyPostContent(businessName, categoryLabel);
 
     try {
-      const post = await publishPostForLocation(loc.id, {
+      const post = await publishLocationWithRetries(loc.id, {
         type: 'UPDATE',
         content,
         mediaUrl: null,
@@ -90,6 +123,7 @@ export async function runDailyPostPublisher() {
         JSON.stringify({
           event: 'daily_post_location_ok',
           locationId: loc.id,
+          businessName,
           postId: post.id,
         }),
       );
@@ -102,7 +136,9 @@ export async function runDailyPostPublisher() {
         JSON.stringify({
           event: 'daily_post_location_failed',
           locationId: loc.id,
+          businessName,
           error: message,
+          retriesExhausted: MAX_RETRIES,
         }),
       );
 
@@ -112,8 +148,21 @@ export async function runDailyPostPublisher() {
         details: {
           error: message,
           source: 'dailyPostPublisher',
+          retriesExhausted: MAX_RETRIES,
         },
       });
+
+      try {
+        await sendFailureAlert(loc.id, businessName, message);
+      } catch (alertErr) {
+        console.error(
+          JSON.stringify({
+            event: 'failure_alert_send_failed',
+            locationId: loc.id,
+            error: alertErr?.message ?? String(alertErr),
+          }),
+        );
+      }
     }
   }
 

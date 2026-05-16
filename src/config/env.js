@@ -21,6 +21,13 @@ export const env = {
   CLOUDINARY_CLOUD_NAME: process.env.CLOUDINARY_CLOUD_NAME ?? '',
   CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY ?? '',
   CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET ?? '',
+  ALERT_EMAIL_FROM: process.env.ALERT_EMAIL_FROM ?? '',
+  ALERT_EMAIL_TO: process.env.ALERT_EMAIL_TO ?? '',
+  SMTP_HOST: process.env.SMTP_HOST ?? '',
+  SMTP_PORT: Number(process.env.SMTP_PORT) || 587,
+  SMTP_USER: process.env.SMTP_USER ?? '',
+  /** Gmail app passwords may include spaces in .env — stripped when used */
+  SMTP_PASS: String(process.env.SMTP_PASS ?? '').replace(/\s/g, ''),
 };
 
 const REQUIRED_FOR_API = [
