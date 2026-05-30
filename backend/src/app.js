@@ -7,6 +7,7 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import healthRoutes from './routes/health.routes.js';
 import authRoutes from './routes/auth.routes.js';
 import locationsRoutes from './routes/locations.routes.js';
+import jobsRoutes from './routes/jobs.routes.js';
 import testRoutes from './routes/test.routes.js';
 import setupRoutes from './routes/setup.routes.js';
 
@@ -38,6 +39,7 @@ export function createApp() {
   app.use('/health', healthRoutes);
   app.use('/auth', authRoutes);
   app.use('/locations', locationsRoutes);
+  app.use('/jobs', jobsRoutes);
 
   if (env.NODE_ENV === 'development') {
     app.use('/test', testRoutes);

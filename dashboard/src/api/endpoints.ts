@@ -86,7 +86,7 @@ export async function rejectPost(locationId: string, postId: string): Promise<Po
 
 export async function runDailyJob(): Promise<DailyJobResult> {
   const { data } = await api.post<ApiResponse<DailyJobResult>>(
-    '/test/run-daily-job',
+    '/jobs/run-daily-job',
     {},
     { timeout: 300000 },
   );
