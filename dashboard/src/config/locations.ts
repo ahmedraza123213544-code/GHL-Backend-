@@ -21,8 +21,8 @@ export const KNOWN_LOCATIONS = [
 
 export type KnownLocation = (typeof KNOWN_LOCATIONS)[number];
 
-const BY_LOCATION_ID = new Map(
-  KNOWN_LOCATIONS.map((loc) => [loc.locationId, loc] as const),
+const BY_LOCATION_ID = new Map<string, KnownLocation>(
+  KNOWN_LOCATIONS.map((loc) => [loc.locationId, loc]),
 );
 
 export function getKnownLocation(businessName: string): KnownLocation | undefined {
