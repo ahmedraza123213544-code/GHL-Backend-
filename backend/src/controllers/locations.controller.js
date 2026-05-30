@@ -1,13 +1,59 @@
 import { fetchGbpLocationDetails } from '../services/gbp.service.js';
-import { uploadAndSaveMedia } from '../services/media.service.js';
+import { listMediaForLocation, uploadAndSaveMedia } from '../services/media.service.js';
+import {
+  listAllLocations,
+  listLocationSummaries,
+  listPendingPosts,
+} from '../services/locations.service.js';
 import {
   approvePostForLocation,
+  deletePostForLocation,
   getPostForLocation,
   listPostsForLocation,
   publishPostForLocation,
   rejectPostForLocation,
+  updatePostForLocation,
 } from '../services/posts.service.js';
 import { AppError } from '../utils/AppError.js';
+
+export async function listLocations(req, res, next) {
+  try {
+    const locations = await listAllLocations();
+    return res.json({
+      success: true,
+      data: { locations },
+      requestId: req.requestId,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function listLocationsSummary(req, res, next) {
+  try {
+    const summaries = await listLocationSummaries();
+    return res.json({
+      success: true,
+      data: { summaries },
+      requestId: req.requestId,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function listAllPendingPosts(req, res, next) {
+  try {
+    const posts = await listPendingPosts();
+    return res.json({
+      success: true,
+      data: { posts, total: posts.length },
+      requestId: req.requestId,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
 
 export async function getLocationGbp(req, res, next) {
   try {
@@ -92,11 +138,30 @@ export async function listLocationPosts(req, res, next) {
       throw new AppError('locationId is required.', 400, { code: 'INVALID_PARAMS' });
     }
 
-    const posts = await listPostsForLocation(locationId);
+    const data = await listPostsForLocation(locationId, req.query);
 
     return res.json({
       success: true,
-      data: { posts },
+      data,
+      requestId: req.requestId,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function listLocationMedia(req, res, next) {
+  try {
+    const { locationId } = req.params;
+    if (!locationId) {
+      throw new AppError('locationId is required.', 400, { code: 'INVALID_PARAMS' });
+    }
+
+    const media = await listMediaForLocation(locationId);
+
+    return res.json({
+      success: true,
+      data: { media },
       requestId: req.requestId,
     });
   } catch (e) {
@@ -144,6 +209,44 @@ export async function getLocationPost(req, res, next) {
     return res.json({
       success: true,
       data: post,
+      requestId: req.requestId,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function updateLocationPost(req, res, next) {
+  try {
+    const { locationId, postId } = req.params;
+    if (!locationId || !postId) {
+      throw new AppError('locationId and postId are required.', 400, { code: 'INVALID_PARAMS' });
+    }
+
+    const post = await updatePostForLocation(locationId, postId, req.body);
+
+    return res.json({
+      success: true,
+      data: post,
+      requestId: req.requestId,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function deleteLocationPost(req, res, next) {
+  try {
+    const { locationId, postId } = req.params;
+    if (!locationId || !postId) {
+      throw new AppError('locationId and postId are required.', 400, { code: 'INVALID_PARAMS' });
+    }
+
+    const result = await deletePostForLocation(locationId, postId);
+
+    return res.json({
+      success: true,
+      data: result,
       requestId: req.requestId,
     });
   } catch (e) {

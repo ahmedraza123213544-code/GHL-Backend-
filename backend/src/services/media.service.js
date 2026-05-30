@@ -7,6 +7,49 @@ import { AppError } from '../utils/AppError.js';
 const PLACEHOLDER_IMAGE_URL =
   'https://placehold.co/1200x630/png?text=GBP+Automation+Post';
 
+const PLACEHOLDER_HOSTS = ['placehold.co', 'via.placeholder.com'];
+
+export function isPlaceholderMediaUrl(url) {
+  if (!url || typeof url !== 'string') return true;
+  if (url === PLACEHOLDER_IMAGE_URL) return true;
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    return PLACEHOLDER_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Replace placeholder mediaUrl with the latest real upload from the Media table.
+ */
+export async function resolvePostMediaUrl(post) {
+  if (post.mediaUrl && !isPlaceholderMediaUrl(post.mediaUrl)) {
+    return post.mediaUrl;
+  }
+
+  const stored = await prisma.media.findFirst({
+    where: { locationId: post.locationId, postType: post.type },
+    orderBy: { createdAt: 'desc' },
+    select: { url: true },
+  });
+
+  if (stored?.url && !isPlaceholderMediaUrl(stored.url)) {
+    return stored.url;
+  }
+
+  return null;
+}
+
+export async function enrichPostsWithMedia(posts) {
+  return Promise.all(
+    posts.map(async (post) => ({
+      ...post,
+      mediaUrl: await resolvePostMediaUrl(post),
+    })),
+  );
+}
+
 const POST_TYPES = new Set(['UPDATE', 'OFFER', 'EVENT']);
 
 function normalizePostType(postType) {
@@ -116,6 +159,24 @@ export async function getMediaForPost(locationId, postType) {
   }
 
   return PLACEHOLDER_IMAGE_URL;
+}
+
+/**
+ * List uploaded media records for a location (newest first).
+ */
+export async function listMediaForLocation(locationId) {
+  const location = await prisma.location.findUnique({
+    where: { id: locationId },
+    select: { id: true },
+  });
+  if (!location) {
+    throw new AppError('Location not found.', 404, { code: 'LOCATION_NOT_FOUND' });
+  }
+
+  return prisma.media.findMany({
+    where: { locationId },
+    orderBy: { createdAt: 'desc' },
+  });
 }
 
 /**

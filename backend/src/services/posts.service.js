@@ -3,7 +3,7 @@ import prisma from '../database/client.js';
 import { AppError } from '../utils/AppError.js';
 import { publishLocalPostToGoogle } from './gbp.service.js';
 import { updateLocationCustomFields } from './ghl.service.js';
-import { getMediaForPost } from './media.service.js';
+import { enrichPostsWithMedia, getMediaForPost } from './media.service.js';
 
 const POST_TYPES = new Set(['UPDATE', 'OFFER', 'EVENT']);
 
@@ -27,11 +27,31 @@ function validatePublishBody(body) {
       code: 'INVALID_BODY',
     });
   }
-  return {
+
+  let scheduledAt;
+  if (Object.prototype.hasOwnProperty.call(body, 'scheduledAt')) {
+    if (body.scheduledAt == null || body.scheduledAt === '') {
+      scheduledAt = null;
+    } else {
+      const parsed = new Date(body.scheduledAt);
+      if (Number.isNaN(parsed.getTime())) {
+        throw new AppError('Field `scheduledAt` must be a valid date/time.', 400, {
+          code: 'INVALID_BODY',
+        });
+      }
+      scheduledAt = parsed;
+    }
+  }
+
+  const result = {
     type: String(type).toUpperCase(),
     content: content.trim(),
     mediaUrl: mediaUrl != null && mediaUrl !== '' ? String(mediaUrl).trim() : null,
   };
+  if (scheduledAt !== undefined) {
+    result.scheduledAt = scheduledAt;
+  }
+  return result;
 }
 
 async function syncGhlAfterPublish(location, post) {
@@ -55,7 +75,7 @@ async function syncGhlAfterPublish(location, post) {
 }
 
 /**
- * Publishes to GBP (unless mock) and updates GHL custom fields.
+ * Publishes to GBP (unless MOCK_MODE) and updates GHL custom fields.
  */
 async function executeExternalPublish(location, post) {
   if (!env.MOCK_MODE) {
@@ -96,7 +116,7 @@ async function getPendingPostOrThrow(locationId, postId) {
  * Publishes a post (or queues for approval), persists Post + AuditLog, returns saved Post.
  */
 export async function publishPostForLocation(locationId, body) {
-  const { type, content, mediaUrl: bodyMediaUrl } = validatePublishBody(body);
+  const { type, content, mediaUrl: bodyMediaUrl, scheduledAt } = validatePublishBody(body);
   const location = await getLocationOrThrow(locationId);
   const mediaUrl = bodyMediaUrl ?? (await getMediaForPost(locationId, type));
 
@@ -111,6 +131,7 @@ export async function publishPostForLocation(locationId, body) {
             mediaUrl,
             status: 'PENDING',
             platform: 'google',
+            ...(scheduledAt !== undefined ? { scheduledAt } : {}),
           },
         }),
         prisma.auditLog.create({
@@ -130,11 +151,26 @@ export async function publishPostForLocation(locationId, body) {
     }
   }
 
+  let googleError = null;
   if (!env.MOCK_MODE) {
-    await publishLocalPostToGoogle(location, { type, content, mediaUrl });
+    try {
+      await publishLocalPostToGoogle(location, { type, content, mediaUrl });
+    } catch (e) {
+      googleError = e;
+      console.error(
+        JSON.stringify({
+          event: 'google_publish_failed',
+          locationId,
+          error: e?.message ?? String(e),
+          code: e?.code,
+        }),
+      );
+    }
   }
 
   const now = new Date();
+  const published = !googleError;
+  const status = published ? 'PUBLISHED' : 'FAILED';
 
   try {
     const [post] = await prisma.$transaction([
@@ -144,16 +180,21 @@ export async function publishPostForLocation(locationId, body) {
           type,
           content,
           mediaUrl,
-          status: 'PUBLISHED',
-          postedAt: now,
+          status,
+          postedAt: published ? now : null,
           platform: 'google',
+          ...(scheduledAt !== undefined ? { scheduledAt } : {}),
         },
       }),
       prisma.auditLog.create({
         data: {
-          action: 'POST_PUBLISHED',
+          action: published ? 'POST_PUBLISHED' : 'POST_PUBLISH_FAILED',
           locationId,
-          details: { type, mockMode: env.MOCK_MODE },
+          details: {
+            type,
+            mockMode: env.MOCK_MODE,
+            ...(googleError ? { error: googleError.message } : {}),
+          },
         },
       }),
     ]);
@@ -222,13 +263,46 @@ export async function rejectPostForLocation(locationId, postId) {
   });
 }
 
-export async function listPostsForLocation(locationId) {
+export async function listPostsForLocation(locationId, query = {}) {
   await getLocationOrThrow(locationId);
 
-  return prisma.post.findMany({
-    where: { locationId },
-    orderBy: { createdAt: 'desc' },
-  });
+  const hasPagination = query.page != null || query.limit != null;
+  const page = Math.max(1, Number.parseInt(String(query.page ?? 1), 10) || 1);
+  const limit = Math.min(
+    100,
+    Math.max(1, Number.parseInt(String(query.limit ?? 10), 10) || 10),
+  );
+
+  if (!hasPagination) {
+    const posts = await prisma.post.findMany({
+      where: { locationId },
+      orderBy: { createdAt: 'desc' },
+    });
+    return { posts: await enrichPostsWithMedia(posts) };
+  }
+
+  const skip = (page - 1) * limit;
+  const where = { locationId };
+
+  const [posts, total] = await Promise.all([
+    prisma.post.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      skip,
+      take: limit,
+    }),
+    prisma.post.count({ where }),
+  ]);
+
+  return {
+    posts: await enrichPostsWithMedia(posts),
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
 }
 
 export async function getPostForLocation(locationId, postId) {
@@ -240,5 +314,72 @@ export async function getPostForLocation(locationId, postId) {
   if (!post) {
     throw new AppError('Post not found.', 404, { code: 'POST_NOT_FOUND' });
   }
-  return post;
+  const [enriched] = await enrichPostsWithMedia([post]);
+  return enriched;
+}
+
+/**
+ * Updates an existing post (content, type, mediaUrl).
+ */
+export async function updatePostForLocation(locationId, postId, body) {
+  await getLocationOrThrow(locationId);
+
+  const existing = await prisma.post.findFirst({
+    where: { id: postId, locationId },
+  });
+  if (!existing) {
+    throw new AppError('Post not found.', 404, { code: 'POST_NOT_FOUND' });
+  }
+
+  const { type, content, mediaUrl, scheduledAt } = validatePublishBody(body);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    const post = await tx.post.update({
+      where: { id: postId },
+      data: {
+        type,
+        content,
+        mediaUrl,
+        ...(scheduledAt !== undefined ? { scheduledAt } : {}),
+      },
+    });
+    await tx.auditLog.create({
+      data: {
+        action: 'POST_UPDATED',
+        locationId,
+        details: { postId, type, mockMode: env.MOCK_MODE },
+      },
+    });
+    return post;
+  });
+
+  const [enriched] = await enrichPostsWithMedia([updated]);
+  return enriched;
+}
+
+/**
+ * Deletes a post from the database.
+ */
+export async function deletePostForLocation(locationId, postId) {
+  await getLocationOrThrow(locationId);
+
+  const existing = await prisma.post.findFirst({
+    where: { id: postId, locationId },
+  });
+  if (!existing) {
+    throw new AppError('Post not found.', 404, { code: 'POST_NOT_FOUND' });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.post.delete({ where: { id: postId } });
+    await tx.auditLog.create({
+      data: {
+        action: 'POST_DELETED',
+        locationId,
+        details: { postId, status: existing.status },
+      },
+    });
+  });
+
+  return { deleted: true, postId };
 }

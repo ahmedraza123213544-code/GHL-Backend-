@@ -37,7 +37,7 @@ async function safeCreateAuditLog(data) {
 }
 
 /**
- * Publish with up to 3 retries (5s between attempts). Returns post or throws last error.
+ * Publish with retries only when the post row was not created (transient DB errors).
  */
 async function publishLocationWithRetries(locationId, payload) {
   let lastError;
@@ -45,8 +45,19 @@ async function publishLocationWithRetries(locationId, payload) {
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return await publishPostForLocation(locationId, payload);
+      const post = await publishPostForLocation(locationId, payload);
+      if (post.status === 'FAILED') {
+        const err = new Error(
+          'Google Business Profile publish failed; post saved as FAILED and GHL updated.',
+        );
+        err.post = post;
+        throw err;
+      }
+      return post;
     } catch (err) {
+      if (err?.post?.status === 'FAILED') {
+        throw err;
+      }
       lastError = err;
       if (attempt < attempts) {
         console.warn(
@@ -134,7 +145,13 @@ export async function runDailyPostPublisher() {
     } catch (err) {
       failed += 1;
       const message = err?.message ?? String(err);
-      results.push({ locationId: loc.id, success: false, error: message });
+      const postId = err?.post?.id;
+      results.push({
+        locationId: loc.id,
+        success: false,
+        error: message,
+        ...(postId ? { postId } : {}),
+      });
 
       console.error(
         JSON.stringify({
