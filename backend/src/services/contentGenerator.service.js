@@ -12,6 +12,7 @@ Rules:
 - Do not make it sound more professional or polished. Keep it raw.
 - Do not add emojis, hashtags, or calls to action.
 - If recent posts are shown, make sure the few words you change make this draft feel different from those.
+- The business name in the draft is sacred: never replace it, never swap it for another company name, never mention any other business.
 - Output ONLY the edited draft. Nothing else.`;
 
 const DRAFT_TEMPLATES = [
@@ -90,21 +91,54 @@ function pickTemplate(recentContents, businessName, category, city) {
   return drafts[bestIdx];
 }
 
-export async function generatePostContent(businessName, category, city, postType, dayOfYear) {
+async function getOtherBusinessNames(excludeName) {
+  try {
+    const rows = await prisma.business.findMany({
+      where: { status: 'ACTIVE' },
+      select: { name: true },
+    });
+    return rows.map((r) => r.name).filter((n) => n !== excludeName);
+  } catch {
+    return [];
+  }
+}
+
+function contentMentionsOtherBusiness(content, businessName, otherNames) {
+  const lower = content.toLowerCase();
+  const self = businessName.trim().toLowerCase();
+  for (const other of otherNames) {
+    const o = other.trim().toLowerCase();
+    if (!o || o === self) continue;
+    if (lower.includes(o)) return other;
+  }
+  return null;
+}
+
+function contentIncludesBusinessName(content, businessName) {
+  const name = businessName.trim();
+  if (!name) return true;
+  return content.toLowerCase().includes(name.toLowerCase());
+}
+
+/**
+ * @param {string} locationId - DB location id (used for recent-post context)
+ * @param {string} businessName - exact business name that must appear in the post
+ */
+export async function generatePostContent(
+  locationId,
+  businessName,
+  category,
+  city,
+  postType,
+  dayOfYear,
+) {
   const apiKey = env.OPENAI_API_KEY?.trim();
+  const name = String(businessName ?? '').trim() || 'Business';
 
-  const locationRow = await prisma.location.findFirst({
-    where: {
-      business: { name: businessName },
-    },
-    select: { id: true },
-  });
+  const recentContents = locationId ? await getRecentPosts(locationId) : [];
+  const otherBusinessNames = await getOtherBusinessNames(name);
 
-  const recentContents = locationRow
-    ? await getRecentPosts(locationRow.id)
-    : [];
-
-  const draft = pickTemplate(recentContents, businessName, category, city);
+  const draft = pickTemplate(recentContents, name, category, city);
 
   if (!apiKey) {
     console.warn(
@@ -114,10 +148,16 @@ export async function generatePostContent(businessName, category, city, postType
   }
 
   const recentSection = recentContents.length > 0
-    ? `\n\nRecent posts already published (DO NOT repeat these topics or openings):\n${recentContents.map((c, i) => `${i + 1}. "${c}"`).join('\n')}`
+    ? `\n\nRecent posts for this same business (change wording only; do NOT copy another business name from these):\n${recentContents.map((c, i) => `${i + 1}. "${c}"`).join('\n')}`
     : '';
 
-  const userPrompt = `Here is the owner's draft for ${businessName}:\n\n"${draft}"${recentSection}\n\nChange only 8 to 12 words max. Keep everything else exactly the same. Do not rewrite or restructure. Do not shorten it or remove any sentences. Just swap a few words for similar ones.`;
+  const userPrompt = `Business name (must stay exactly this name in the post): "${name}"
+
+Here is the owner's draft:
+
+"${draft}"${recentSection}
+
+Change only 8 to 12 words max. Keep everything else exactly the same. Do not rewrite or restructure. Do not shorten it or remove any sentences. The business name "${name}" must remain in the post unchanged. Do not mention any other business. Just swap a few non-name words for similar ones.`;
 
   try {
     const client = new OpenAI({ apiKey });
@@ -136,13 +176,40 @@ export async function generatePostContent(businessName, category, city, postType
       throw new Error('OpenAI returned empty content');
     }
 
-    return content.replace(/^["']|["']$/g, '');
+    const cleaned = content.replace(/^["']|["']$/g, '');
+
+    const wrongBusiness = contentMentionsOtherBusiness(cleaned, name, otherBusinessNames);
+    if (wrongBusiness) {
+      console.warn(
+        JSON.stringify({
+          event: 'openai_wrong_business_name',
+          expected: name,
+          found: wrongBusiness,
+          locationId,
+        }),
+      );
+      return draft;
+    }
+
+    if (!contentIncludesBusinessName(cleaned, name)) {
+      console.warn(
+        JSON.stringify({
+          event: 'openai_missing_business_name',
+          businessName: name,
+          locationId,
+        }),
+      );
+      return draft;
+    }
+
+    return cleaned;
   } catch (e) {
     console.error(
       JSON.stringify({
         event: 'openai_generate_failed',
         error: e?.message ?? String(e),
-        businessName,
+        businessName: name,
+        locationId,
         postType,
       }),
     );

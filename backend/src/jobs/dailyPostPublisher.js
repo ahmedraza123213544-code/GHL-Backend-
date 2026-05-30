@@ -106,9 +106,10 @@ export async function runDailyPostPublisher() {
   );
 
   for (const loc of locations) {
-    const businessName = loc.business?.name ?? 'Business';
+    const businessName = loc.business?.name?.trim() || 'Business';
     const category = inferCategoryLabel(businessName);
     const content = await generatePostContent(
+      loc.id,
       businessName,
       category,
       'New Jersey',
@@ -139,6 +140,7 @@ export async function runDailyPostPublisher() {
           event: 'daily_post_location_ok',
           locationId: loc.id,
           businessName,
+          ghlLocationId: loc.ghlLocationId,
           postId: post.id,
         }),
       );

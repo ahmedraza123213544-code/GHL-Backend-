@@ -13,12 +13,12 @@ const SEED_BUSINESSES = [
 
 const SEED_LOCATIONS = [
   {
-    ghlLocationId: '4diJ9Q8sTqY55I5ihUD7',
+    ghlLocationId: 'NDYfMNSuMjNJz3N2CjPd',
     businessIndex: 0,
     timezone: 'America/New_York',
   },
   {
-    ghlLocationId: 'NDYfMNSuMjNJz3N2CjPd',
+    ghlLocationId: '4diJ9Q8sTqY55I5ihUD7',
     businessIndex: 1,
     timezone: 'America/New_York',
   },
