@@ -6,6 +6,19 @@ function truthyEnv(name) {
   return String(process.env[name] ?? '').toLowerCase() === 'true';
 }
 
+function parseCorsOrigins() {
+  const defaults = [
+    'https://ghl-backend-1qqr.vercel.app',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+  ];
+  const extra = String(process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+  return [...new Set([...defaults, ...extra])];
+}
+
 export const env = {
   NODE_ENV: process.env.NODE_ENV ?? 'development',
   PORT: Number(process.env.PORT) || 4000,
@@ -29,6 +42,7 @@ export const env = {
   /** Gmail app passwords may include spaces in .env — stripped when used */
   SMTP_PASS: String(process.env.SMTP_PASS ?? '').replace(/\s/g, ''),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',
+  corsOrigins: parseCorsOrigins(),
 };
 
 const REQUIRED_FOR_API = [

@@ -15,7 +15,23 @@ export function createApp() {
 
   app.disable('x-powered-by');
   app.use(helmet());
-  app.use(cors());
+  app.use(
+    cors({
+      origin(origin, callback) {
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+        const normalized = origin.replace(/\/$/, '');
+        if (env.corsOrigins.includes(normalized)) {
+          callback(null, true);
+          return;
+        }
+        callback(null, false);
+      },
+      credentials: true,
+    }),
+  );
   app.use(express.json({ limit: '1mb' }));
   app.use(requestLogger);
 
