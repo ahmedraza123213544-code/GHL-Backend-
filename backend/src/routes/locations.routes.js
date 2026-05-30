@@ -5,6 +5,7 @@ import {
   getLocationGbp,
   getLocationPost,
   listAllPendingPosts,
+  deleteLocationMedia,
   listLocationMedia,
   listLocationPosts,
   listLocations,
@@ -29,6 +30,7 @@ router.post(
   parseMediaMultipart,
   asyncHandler(uploadLocationMedia),
 );
+router.delete('/:locationId/media/:mediaId', asyncHandler(deleteLocationMedia));
 router.post('/:locationId/posts/publish', asyncHandler(publishLocationPost));
 router.post('/:locationId/posts/:postId/approve', asyncHandler(approveLocationPost));
 router.post('/:locationId/posts/:postId/reject', asyncHandler(rejectLocationPost));

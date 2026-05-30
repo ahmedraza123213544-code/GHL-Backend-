@@ -1,5 +1,9 @@
 import { fetchGbpLocationDetails } from '../services/gbp.service.js';
-import { listMediaForLocation, uploadAndSaveMedia } from '../services/media.service.js';
+import {
+  deleteMediaForLocation,
+  listMediaForLocation,
+  uploadAndSaveMedia,
+} from '../services/media.service.js';
 import {
   listAllLocations,
   listLocationSummaries,
@@ -162,6 +166,27 @@ export async function listLocationMedia(req, res, next) {
     return res.json({
       success: true,
       data: { media },
+      requestId: req.requestId,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function deleteLocationMedia(req, res, next) {
+  try {
+    const { locationId, mediaId } = req.params;
+    if (!locationId || !mediaId) {
+      throw new AppError('locationId and mediaId are required.', 400, {
+        code: 'INVALID_PARAMS',
+      });
+    }
+
+    const result = await deleteMediaForLocation(locationId, mediaId);
+
+    return res.json({
+      success: true,
+      data: result,
       requestId: req.requestId,
     });
   } catch (e) {

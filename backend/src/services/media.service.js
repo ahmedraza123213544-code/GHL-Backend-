@@ -215,3 +215,65 @@ export async function uploadAndSaveMedia(filePath, locationId, postType) {
   }
   return { url, media: record };
 }
+
+function cloudinaryPublicIdFromUrl(url) {
+  try {
+    const marker = '/upload/';
+    const idx = url.indexOf(marker);
+    if (idx === -1) return null;
+    let path = url.slice(idx + marker.length);
+    path = path.replace(/^v\d+\//, '');
+    const dot = path.lastIndexOf('.');
+    if (dot > -1) path = path.slice(0, dot);
+    return path || null;
+  } catch {
+    return null;
+  }
+}
+
+async function deleteFromCloudinaryIfPossible(url) {
+  if (env.MOCK_MODE || isPlaceholderMediaUrl(url)) return;
+  if (!url.includes('res.cloudinary.com')) return;
+
+  ensureCloudinaryConfigured();
+  const publicId = cloudinaryPublicIdFromUrl(url);
+  if (!publicId) return;
+
+  try {
+    await cloudinary.uploader.destroy(publicId, { resource_type: 'image' });
+  } catch (e) {
+    console.warn(
+      JSON.stringify({
+        event: 'cloudinary_delete_failed',
+        publicId,
+        error: e?.message ?? String(e),
+      }),
+    );
+  }
+}
+
+/**
+ * Deletes a media row and removes the image from Cloudinary when applicable.
+ */
+export async function deleteMediaForLocation(locationId, mediaId) {
+  const existing = await prisma.media.findFirst({
+    where: { id: mediaId, locationId },
+  });
+  if (!existing) {
+    throw new AppError('Media not found.', 404, { code: 'MEDIA_NOT_FOUND' });
+  }
+
+  await deleteFromCloudinaryIfPossible(existing.url);
+
+  await prisma.media.delete({ where: { id: mediaId } });
+
+  await prisma.auditLog.create({
+    data: {
+      action: 'MEDIA_DELETED',
+      locationId,
+      details: { mediaId, url: existing.url, postType: existing.postType },
+    },
+  });
+
+  return { deleted: true, mediaId };
+}

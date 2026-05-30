@@ -110,6 +110,16 @@ export async function fetchMedia(locationId: string): Promise<MediaRecord[]> {
   return data.data.media;
 }
 
+export async function deleteMedia(
+  locationId: string,
+  mediaId: string,
+): Promise<{ deleted: boolean; mediaId: string }> {
+  const { data } = await api.delete<
+    ApiResponse<{ deleted: boolean; mediaId: string }>
+  >(`/locations/${locationId}/media/${mediaId}`);
+  return data.data;
+}
+
 export async function uploadMedia(
   locationId: string,
   file: File,

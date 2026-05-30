@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { fetchMedia, uploadMedia } from '../api/endpoints';
+import { deleteMedia, fetchMedia, uploadMedia } from '../api/endpoints';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
 import {
   ErrorBanner,
   PageHeader,
@@ -141,6 +151,10 @@ export function MediaLibraryPage() {
               items={loc.items}
               uploading={uploading === loc.locationId}
               onUpload={handleUpload}
+              onDeleted={() => {
+                setSuccess('Image deleted.');
+                void loadData();
+              }}
             />
           ))}
         </div>
@@ -155,6 +169,7 @@ interface LocationMediaSectionProps {
   items: MediaRecord[];
   uploading: boolean;
   onUpload: (locationId: string, file: File, postType: PostType) => Promise<void>;
+  onDeleted: () => void;
 }
 
 function LocationMediaSection({
@@ -163,8 +178,27 @@ function LocationMediaSection({
   items,
   uploading,
   onUpload,
+  onDeleted,
 }: LocationMediaSectionProps) {
   const [postType, setPostType] = useState<PostType>('UPDATE');
+  const [deleteTarget, setDeleteTarget] = useState<MediaRecord | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteMedia(locationId, deleteTarget.id);
+      setDeleteTarget(null);
+      onDeleted();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -205,6 +239,10 @@ function LocationMediaSection({
         </div>
       </div>
 
+      {deleteError ? (
+        <p className="mb-3 text-sm text-red-400">{deleteError}</p>
+      ) : null}
+
       {items.length === 0 ? (
         <p className="text-sm text-slate-500">No uploaded media yet for this location.</p>
       ) : (
@@ -239,11 +277,46 @@ function LocationMediaSection({
                 >
                   {item.url}
                 </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteTarget(item);
+                  }}
+                  className="mt-1 w-full rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-400 hover:bg-red-500/20"
+                >
+                  Delete
+                </button>
               </div>
             </article>
           ))}
         </div>
       )}
+
+      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this image?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the image from the library and Cloudinary. Posts that already used
+              this URL are not changed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="danger"
+              loading={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void confirmDelete();
+              }}
+            >
+              {deleting ? 'Deleting…' : 'Delete image'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   );
 }
