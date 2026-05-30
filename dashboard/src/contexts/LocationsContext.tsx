@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from 'react';
 import { fetchLocations } from '../api/endpoints';
-import { applyLocationMapping } from '../config/locations';
 import type { Location } from '../types/location';
 
 interface LocationsContextValue {
@@ -30,8 +29,7 @@ export function LocationsProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchLocations();
-      setLocations(data.map(applyLocationMapping));
+      setLocations(await fetchLocations());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load locations');
     } finally {

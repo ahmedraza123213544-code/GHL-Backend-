@@ -1,3 +1,4 @@
+import { applyLocationMapping } from '../config/locations';
 import api from './client';
 import type { Location, LocationSummary, PendingPostItem } from '../types/location';
 import type {
@@ -11,14 +12,14 @@ import type {
 
 export async function fetchLocations(): Promise<Location[]> {
   const { data } = await api.get<ApiResponse<{ locations: Location[] }>>('/locations');
-  return data.data.locations;
+  return data.data.locations.map(applyLocationMapping);
 }
 
 export async function fetchLocationSummaries(): Promise<LocationSummary[]> {
   const { data } = await api.get<ApiResponse<{ summaries: LocationSummary[] }>>(
     '/locations/summary',
   );
-  return data.data.summaries;
+  return data.data.summaries.map(applyLocationMapping);
 }
 
 export async function fetchPendingPosts(): Promise<PendingPostItem[]> {

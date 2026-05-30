@@ -7,7 +7,6 @@ import {
   SuccessBanner,
 } from '../components/ui';
 import { CardGridSkeleton } from '../components/ui/skeleton';
-import { applyLocationMapping } from '../config/locations';
 import type { LocationSummary } from '../types/location';
 import { formatDate, isToday } from '../utils/format';
 
@@ -27,8 +26,7 @@ export function OverviewPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchLocationSummaries();
-      setSummaries(data.map(applyLocationMapping));
+      setSummaries(await fetchLocationSummaries());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
