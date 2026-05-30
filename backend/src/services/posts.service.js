@@ -7,6 +7,74 @@ import { enrichPostsWithMedia, getMediaForPost } from './media.service.js';
 
 const POST_TYPES = new Set(['UPDATE', 'OFFER', 'EVENT']);
 
+/** Google not ready — save as SCHEDULED (not FAILED) for GHL/dashboard. */
+const SCHEDULED_GOOGLE_ERROR_CODES = new Set([
+  'GOOGLE_NOT_CONNECTED',
+  'GBP_ACCOUNT_ID_MISSING',
+  'GBP_LOCATION_ID_MISSING',
+]);
+
+function isInvalidTokenError(error) {
+  const msg = (error?.message ?? '').toLowerCase();
+  if (error?.statusCode === 401) return true;
+  if (msg.includes('invalid token')) return true;
+  if (msg.includes('invalid credentials')) return true;
+  if (msg.includes('invalid_grant')) return true;
+  if (msg.includes('unauthorized') && msg.includes('token')) return true;
+  return false;
+}
+
+function isApiNotApprovedOrAccessError(error) {
+  const msg = (error?.message ?? '').toLowerCase();
+  const details = error?.details;
+  const googleStatus =
+    details?.error?.status ??
+    details?.body?.error?.status ??
+    details?.status;
+
+  if (error?.statusCode === 403 || googleStatus === 'PERMISSION_DENIED') return true;
+  if (googleStatus === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT') return true;
+
+  const accessPhrases = [
+    'not been used',
+    'has not been enabled',
+    'access not configured',
+    'not approved',
+    'permission denied',
+    'insufficient permission',
+    'caller does not have permission',
+    'service disabled',
+    'api is not enabled',
+  ];
+  return accessPhrases.some((phrase) => msg.includes(phrase));
+}
+
+function shouldSaveAsScheduledNotFailed(error) {
+  if (!error) return false;
+  if (error?.code && SCHEDULED_GOOGLE_ERROR_CODES.has(error.code)) return true;
+  if (isInvalidTokenError(error)) return false;
+  if (isApiNotApprovedOrAccessError(error)) return true;
+
+  const msg = (error?.message ?? '').toLowerCase();
+  if (msg.includes('google is not connected')) return true;
+  if (msg.includes('not configured') && msg.includes('google')) return true;
+
+  return false;
+}
+
+/**
+ * @returns {{ status: 'PUBLISHED' | 'SCHEDULED' | 'FAILED'; auditAction: string }}
+ */
+function resolvePostStatusAfterGoogleError(googleError) {
+  if (!googleError) {
+    return { status: 'PUBLISHED', auditAction: 'POST_PUBLISHED' };
+  }
+  if (shouldSaveAsScheduledNotFailed(googleError)) {
+    return { status: 'SCHEDULED', auditAction: 'POST_SCHEDULED' };
+  }
+  return { status: 'FAILED', auditAction: 'POST_PUBLISH_FAILED' };
+}
+
 function validatePublishBody(body) {
   if (!body || typeof body !== 'object') {
     throw new AppError('Request body must be a JSON object.', 400, { code: 'INVALID_BODY' });
@@ -169,8 +237,10 @@ export async function publishPostForLocation(locationId, body) {
   }
 
   const now = new Date();
-  const published = !googleError;
-  const status = published ? 'PUBLISHED' : 'FAILED';
+  const { status, auditAction } = resolvePostStatusAfterGoogleError(googleError);
+  const published = status === 'PUBLISHED';
+  const effectiveScheduledAt =
+    scheduledAt !== undefined ? scheduledAt : status === 'SCHEDULED' ? now : undefined;
 
   try {
     const [post] = await prisma.$transaction([
@@ -183,17 +253,23 @@ export async function publishPostForLocation(locationId, body) {
           status,
           postedAt: published ? now : null,
           platform: 'google',
-          ...(scheduledAt !== undefined ? { scheduledAt } : {}),
+          ...(effectiveScheduledAt !== undefined ? { scheduledAt: effectiveScheduledAt } : {}),
         },
       }),
       prisma.auditLog.create({
         data: {
-          action: published ? 'POST_PUBLISHED' : 'POST_PUBLISH_FAILED',
+          action: auditAction,
           locationId,
           details: {
             type,
             mockMode: env.MOCK_MODE,
-            ...(googleError ? { error: googleError.message } : {}),
+            ...(googleError
+              ? {
+                  error: googleError.message,
+                  errorCode: googleError.code,
+                  savedAs: status,
+                }
+              : {}),
           },
         },
       }),

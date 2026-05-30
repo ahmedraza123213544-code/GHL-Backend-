@@ -7,8 +7,14 @@ import {
   SuccessBanner,
 } from '../components/ui';
 import { CardGridSkeleton } from '../components/ui/skeleton';
+import { applyLocationMapping } from '../config/locations';
 import type { LocationSummary } from '../types/location';
-import { formatDate } from '../utils/format';
+import { formatDate, isToday } from '../utils/format';
+
+function hasLivePostToday(summary: LocationSummary): boolean {
+  if (!summary.lastPost?.postedAt) return false;
+  return isToday(summary.lastPost.postedAt);
+}
 
 export function OverviewPage() {
   const [summaries, setSummaries] = useState<LocationSummary[]>([]);
@@ -21,7 +27,8 @@ export function OverviewPage() {
     setLoading(true);
     setError(null);
     try {
-      setSummaries(await fetchLocationSummaries());
+      const data = await fetchLocationSummaries();
+      setSummaries(data.map(applyLocationMapping));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -107,7 +114,7 @@ export function OverviewPage() {
                     GHL: {summary.ghlLocationId}
                   </p>
                 </div>
-                {summary.hasPostToday ? (
+                {hasLivePostToday(summary) ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
                     Live
