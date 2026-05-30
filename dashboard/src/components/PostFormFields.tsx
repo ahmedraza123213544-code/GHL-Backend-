@@ -123,9 +123,9 @@ export function PostFormFields({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="UPDATE">UPDATE — standard post</SelectItem>
-            <SelectItem value="OFFER">OFFER — promotion</SelectItem>
-            <SelectItem value="EVENT">EVENT — event announcement</SelectItem>
+            <SelectItem value="UPDATE">UPDATE (standard post)</SelectItem>
+            <SelectItem value="OFFER">OFFER (promotion)</SelectItem>
+            <SelectItem value="EVENT">EVENT (event announcement)</SelectItem>
           </SelectContent>
         </Select>
         <p className="mt-1 text-xs text-slate-500">

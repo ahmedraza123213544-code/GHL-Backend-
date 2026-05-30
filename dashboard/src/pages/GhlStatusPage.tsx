@@ -114,7 +114,7 @@ export function GhlStatusPage() {
                     Post Status (from latest post)
                   </dt>
                   <dd className="mt-1 text-sm text-white">
-                    {row.lastPost?.status ?? '—'}
+                    {row.lastPost?.status ?? 'N/A'}
                   </dd>
                 </div>
                 <div className="rounded-lg bg-slate-950/50 p-4">
@@ -122,7 +122,7 @@ export function GhlStatusPage() {
                     ghlLastPostDateFieldId
                   </dt>
                   <dd className="mt-1 break-all font-mono text-xs text-emerald-400">
-                    {row.ghlLastPostDateFieldId ?? 'Not set — click Refresh GHL Fields'}
+                    {row.ghlLastPostDateFieldId ?? 'Not set. Click Refresh GHL Fields.'}
                   </dd>
                 </div>
                 <div className="rounded-lg bg-slate-950/50 p-4">
@@ -130,7 +130,7 @@ export function GhlStatusPage() {
                     ghlPostStatusFieldId
                   </dt>
                   <dd className="mt-1 break-all font-mono text-xs text-emerald-400">
-                    {row.ghlPostStatusFieldId ?? 'Not set — click Refresh GHL Fields'}
+                    {row.ghlPostStatusFieldId ?? 'Not set. Click Refresh GHL Fields.'}
                   </dd>
                 </div>
               </dl>

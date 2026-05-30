@@ -14,7 +14,7 @@ export function PostMediaThumb({
   className,
 }: PostMediaThumbProps) {
   if (!url) {
-    return <span className="text-xs text-slate-600">—</span>;
+    return <span className="text-xs text-slate-600">N/A</span>;
   }
 
   const sizeClass =

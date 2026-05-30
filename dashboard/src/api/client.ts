@@ -37,7 +37,7 @@ api.interceptors.response.use(
     if (error.code === 'ECONNABORTED') {
       return Promise.reject(
         new Error(
-          'Request timed out. Long-running jobs like the daily publisher can take 1–3 minutes — try again or check the server logs.',
+          'Request timed out. Long-running jobs like the daily publisher can take 1-3 minutes. Try again or check the server logs.',
         ),
       );
     }

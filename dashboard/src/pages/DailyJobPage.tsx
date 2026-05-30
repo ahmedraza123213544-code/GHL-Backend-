@@ -86,7 +86,7 @@ export function DailyJobPage() {
           disabled={running}
           className="w-full rounded-xl bg-emerald-600 px-6 py-4 text-base font-semibold text-white shadow-lg shadow-emerald-900/30 hover:bg-emerald-500 disabled:opacity-50 sm:w-auto sm:px-8 sm:text-lg"
         >
-          {running ? 'Running Daily Job… (may take 1–3 min)' : 'Run Daily Job Now'}
+          {running ? 'Running Daily Job… (may take 1-3 min)' : 'Run Daily Job Now'}
         </button>
       </div>
 

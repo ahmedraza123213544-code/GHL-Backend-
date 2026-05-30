@@ -1,7 +1,7 @@
 import type { Post, PostStatus } from '../types';
 
 export function formatDate(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return 'N/A';
   return new Date(value).toLocaleString(undefined, {
     month: 'short',
     day: 'numeric',
@@ -12,7 +12,7 @@ export function formatDate(value: string | null | undefined): string {
 }
 
 export function formatDateShort(value: string | null | undefined): string {
-  if (!value) return '—';
+  if (!value) return 'N/A';
   return new Date(value).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric',

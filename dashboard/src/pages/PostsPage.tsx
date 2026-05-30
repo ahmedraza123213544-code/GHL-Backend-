@@ -274,7 +274,7 @@ export function PostsPage() {
                       {post.mediaUrl ? (
                         <PostMediaThumb url={post.mediaUrl} />
                       ) : (
-                        <span className="text-xs text-slate-600">—</span>
+                        <span className="text-xs text-slate-600">N/A</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">

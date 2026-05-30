@@ -88,7 +88,7 @@ export function OverviewPage() {
             disabled={jobRunning}
             className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
           >
-            {jobRunning ? 'Running… (may take 1–3 min)' : 'Run Daily Job'}
+            {jobRunning ? 'Running… (may take 1-3 min)' : 'Run Daily Job'}
           </button>
         </div>
       </div>
