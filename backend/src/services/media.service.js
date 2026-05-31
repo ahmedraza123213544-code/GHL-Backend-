@@ -162,6 +162,59 @@ export async function getMediaForPost(locationId, postType) {
 }
 
 /**
+ * Random real media URL from Cloudinary or the Media table, or null if none.
+ * Used as fallback when Pexels has no result (no placeholder).
+ */
+export async function getLocationMediaFallbackUrl(locationId, postType = 'UPDATE') {
+  const type = normalizePostType(postType);
+  const folder = cloudinaryFolder(locationId, type);
+
+  const stored = await prisma.media.findMany({
+    where: { locationId, postType: type },
+    select: { url: true },
+  });
+  const realStored = stored.filter((m) => !isPlaceholderMediaUrl(m.url));
+  if (realStored.length > 0) {
+    return realStored[Math.floor(Math.random() * realStored.length)].url;
+  }
+
+  if (
+    env.MOCK_MODE ||
+    !env.CLOUDINARY_CLOUD_NAME ||
+    !env.CLOUDINARY_API_KEY ||
+    !env.CLOUDINARY_API_SECRET
+  ) {
+    return null;
+  }
+
+  ensureCloudinaryConfigured();
+
+  try {
+    const { resources } = await cloudinary.api.resources({
+      type: 'upload',
+      prefix: folder,
+      max_results: 100,
+    });
+
+    const real = (resources ?? []).filter((r) => r.secure_url && !isPlaceholderMediaUrl(r.secure_url));
+    if (real.length > 0) {
+      const pick = real[Math.floor(Math.random() * real.length)];
+      return pick.secure_url;
+    }
+  } catch (e) {
+    console.warn(
+      JSON.stringify({
+        event: 'cloudinary_list_failed',
+        folder,
+        error: e?.message ?? String(e),
+      }),
+    );
+  }
+
+  return null;
+}
+
+/**
  * List uploaded media records for a location (newest first).
  */
 export async function listMediaForLocation(locationId) {

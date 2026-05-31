@@ -42,6 +42,7 @@ export const env = {
   /** Gmail app passwords may include spaces in .env — stripped when used */
   SMTP_PASS: String(process.env.SMTP_PASS ?? '').replace(/\s/g, ''),
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',
+  PEXELS_API_KEY: process.env.PEXELS_API_KEY ?? '',
   corsOrigins: parseCorsOrigins(),
 };
 

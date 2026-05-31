@@ -38,7 +38,7 @@ async function resolveGhlAuth(locationOrGhlLocationId) {
 }
 
 /**
- * Updates location custom values (two POSTs — one per field name).
+ * Updates location custom values (GET → PUT if exists, else POST).
  * Custom value names must match what is configured in the GHL location.
  *
  * @param {string | { ghlLocationId: string, ghlApiKey?: string | null }} locationOrGhlLocationId
@@ -78,7 +78,7 @@ export async function updateLocationCustomFields(
     return { success: false, skipped: true };
   }
 
-  const url = `https://services.leadconnectorhq.com/locations/${encodeURIComponent(ghlLocationId)}/customValues`;
+  const baseUrl = `https://services.leadconnectorhq.com/locations/${encodeURIComponent(ghlLocationId)}/customValues`;
   const headers = {
     Authorization: `Bearer ${token}`,
     Accept: 'application/json',
@@ -91,24 +91,83 @@ export async function updateLocationCustomFields(
     { name: CUSTOM_FIELD_POST_STATUS, value: statusStr },
   ];
 
-  for (const body of payloads) {
-    const response = await axios.post(url, body, {
-      headers,
-      validateStatus: () => true,
-    });
+  const existingByName = await fetchCustomValuesByName(baseUrl, headers);
 
-    if (response.status < 200 || response.status >= 300) {
-      const msg =
-        response.data?.message ||
-        response.data?.error ||
-        response.data?.msg ||
-        `HTTP ${response.status}`;
-      throw new AppError(`GHL customValues API failed: ${msg}`, 502, {
-        code: 'GHL_CUSTOM_VALUES_ERROR',
-        details: { status: response.status, body: response.data, field: body.name },
-      });
-    }
+  for (const body of payloads) {
+    await upsertLocationCustomValue(baseUrl, headers, body.name, body.value, existingByName);
   }
 
   return { success: true };
+}
+
+function ghlErrorMessage(response) {
+  return (
+    response.data?.message ||
+    response.data?.error ||
+    response.data?.msg ||
+    `HTTP ${response.status}`
+  );
+}
+
+async function fetchCustomValuesByName(baseUrl, headers) {
+  const listResponse = await axios.get(baseUrl, { headers, validateStatus: () => true });
+
+  if (listResponse.status < 200 || listResponse.status >= 300) {
+    throw new AppError(`GHL customValues API failed: ${ghlErrorMessage(listResponse)}`, 502, {
+      code: 'GHL_CUSTOM_VALUES_ERROR',
+      details: { status: listResponse.status, body: listResponse.data, method: 'GET' },
+    });
+  }
+
+  const raw = listResponse.data?.customValues ?? [];
+  const list = Array.isArray(raw) ? raw : [];
+  const existingByName = new Map();
+
+  for (const item of list) {
+    if (item?.name && item?.id) {
+      existingByName.set(item.name, item);
+    }
+  }
+
+  return existingByName;
+}
+
+async function upsertLocationCustomValue(baseUrl, headers, name, value, existingByName) {
+  const existing = existingByName.get(name);
+
+  if (existing?.id) {
+    const putUrl = `${baseUrl}/${encodeURIComponent(existing.id)}`;
+    const putResponse = await axios.put(
+      putUrl,
+      { name, value },
+      { headers, validateStatus: () => true },
+    );
+
+    if (putResponse.status >= 200 && putResponse.status < 300) {
+      return;
+    }
+
+    throw new AppError(`GHL customValues API failed: ${ghlErrorMessage(putResponse)}`, 502, {
+      code: 'GHL_CUSTOM_VALUES_ERROR',
+      details: {
+        status: putResponse.status,
+        body: putResponse.data,
+        field: name,
+        method: 'PUT',
+      },
+    });
+  }
+
+  const postResponse = await axios.post(
+    baseUrl,
+    { name, value },
+    { headers, validateStatus: () => true },
+  );
+
+  if (postResponse.status < 200 || postResponse.status >= 300) {
+    throw new AppError(`GHL customValues API failed: ${ghlErrorMessage(postResponse)}`, 502, {
+      code: 'GHL_CUSTOM_VALUES_ERROR',
+      details: { status: postResponse.status, body: postResponse.data, field: name, method: 'POST' },
+    });
+  }
 }

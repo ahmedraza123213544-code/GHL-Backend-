@@ -2,6 +2,8 @@ import cron from 'node-cron';
 import prisma from '../database/client.js';
 import { RETRY_DELAYS_MS, sendFailureAlert, sleep } from '../services/alert.service.js';
 import { generatePostContent } from '../services/contentGenerator.service.js';
+import { getLocationMediaFallbackUrl } from '../services/media.service.js';
+import { fetchPexelsImage } from '../services/pexels.service.js';
 import { publishPostForLocation } from '../services/posts.service.js';
 
 const MAX_RETRIES = 3;
@@ -78,6 +80,27 @@ async function publishLocationWithRetries(locationId, payload) {
 }
 
 /**
+ * Pexels image first, then Cloudinary/DB media, then null.
+ */
+async function resolveDailyPostMediaUrl(locationId, businessName, category, city) {
+  let mediaUrl = await fetchPexelsImage(businessName, category, city);
+
+  if (!mediaUrl) {
+    mediaUrl = await getLocationMediaFallbackUrl(locationId, 'UPDATE');
+  }
+
+  console.info(
+    JSON.stringify({
+      event: 'daily_post_media_resolved',
+      locationId,
+      hasMedia: Boolean(mediaUrl),
+    }),
+  );
+
+  return mediaUrl;
+}
+
+/**
  * One run: active locations → template post → publish service (respects MOCK_MODE).
  * @returns {Promise<{ locationCount: number; ok: number; failed: number; results: Array<{ locationId: string; success: boolean; postId?: string; error?: string }> }>}
  */
@@ -106,10 +129,11 @@ export async function runDailyPostPublisher() {
   );
 
   for (const loc of locations) {
+    const locationId = loc.id;
     const businessName = loc.business?.name?.trim() || 'Business';
     const category = inferCategoryLabel(businessName);
     const content = await generatePostContent(
-      loc.id,
+      locationId,
       businessName,
       category,
       'New Jersey',
@@ -117,11 +141,18 @@ export async function runDailyPostPublisher() {
       dayOfYear,
     );
 
+    const mediaUrl = await resolveDailyPostMediaUrl(
+      locationId,
+      businessName,
+      category,
+      'New Jersey',
+    );
+
     try {
       const post = await publishLocationWithRetries(loc.id, {
         type: 'UPDATE',
         content,
-        mediaUrl: null,
+        mediaUrl,
       });
 
       ok += 1;

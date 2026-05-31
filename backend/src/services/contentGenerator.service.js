@@ -2,18 +2,8 @@ import OpenAI from 'openai';
 import { env } from '../config/env.js';
 import prisma from '../database/client.js';
 
-const SYSTEM_PROMPT = `You are proofreading a Google Business Profile post for a friend who owns a small business.
-
-Rules:
-- Change NO MORE than 8 to 12 words in the entire draft. Everything else stays exactly as written.
-- Do not rewrite sentences. Do not restructure. Do not add new sentences.
-- Only swap a few words for slightly different words with the same meaning.
-- Keep the exact same sentence order, the exact same tone, the exact same length.
-- Do not make it sound more professional or polished. Keep it raw.
-- Do not add emojis, hashtags, or calls to action.
-- If recent posts are shown, make sure the few words you change make this draft feel different from those.
-- The business name in the draft is sacred: never replace it, never swap it for another company name, never mention any other business.
-- Output ONLY the edited draft. Nothing else.`;
+const SYSTEM_PROMPT =
+  'You are a creative local business writer. Your job is to make every single post feel like a completely fresh moment. Never reuse openings, themes or structures from previous posts. If you catch yourself starting with a word you used before, stop and start differently. Be genuinely creative and surprising every time. Write in first person casual tone like a real business owner. No corporate words. No hashtags. No emojis. Under 80 words.';
 
 const DRAFT_TEMPLATES = [
   (biz, cat, city) =>
@@ -52,20 +42,6 @@ const DRAFT_TEMPLATES = [
   (biz, cat, city) =>
     `Midweek update from ${biz} and things are moving along nicely. Got a couple of ${cat} jobs done ahead of schedule this week which honestly does not happen that often around here. Feeling really good about where we are at right now and the direction things are going. If you are anywhere in the ${city} area and need us for anything we are right here same as always.`,
 ];
-
-async function getRecentPosts(locationId, limit = 5) {
-  try {
-    const posts = await prisma.post.findMany({
-      where: { locationId },
-      orderBy: { createdAt: 'desc' },
-      take: limit,
-      select: { content: true },
-    });
-    return posts.map((p) => p.content);
-  } catch {
-    return [];
-  }
-}
 
 function pickTemplate(recentContents, businessName, category, city) {
   const drafts = DRAFT_TEMPLATES.map((fn) => fn(businessName, category, city));
@@ -120,6 +96,20 @@ function contentIncludesBusinessName(content, businessName) {
   return content.toLowerCase().includes(name.toLowerCase());
 }
 
+function getBusinessFocus(businessName, category) {
+  const name = String(businessName ?? '').trim();
+  if (name === 'Bergen Car Company') {
+    return 'cars, vehicles, automotive, test drives, and inventory';
+  }
+  if (name === '551 HVAC') {
+    return 'heating, cooling, AC, furnace, service calls, and technicians';
+  }
+  if (name === 'Biz Solutions INC') {
+    return 'business services, consulting, solutions, and clients';
+  }
+  return String(category ?? '').trim() || 'local business services';
+}
+
 /**
  * @param {string} locationId - DB location id (used for recent-post context)
  * @param {string} businessName - exact business name that must appear in the post
@@ -134,11 +124,31 @@ export async function generatePostContent(
 ) {
   const apiKey = env.OPENAI_API_KEY?.trim();
   const name = String(businessName ?? '').trim() || 'Business';
+  const locationCity = String(city ?? '').trim() || 'this area';
+  const categoryLabel = String(category ?? '').trim() || 'local business';
 
-  const recentContents = locationId ? await getRecentPosts(locationId) : [];
+  const recentPosts = locationId
+    ? await prisma.post.findMany({
+        where: { locationId },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: { content: true },
+      })
+    : [];
+
+  const recentPostsSummary =
+    recentPosts.length > 0
+      ? recentPosts.map((p) => p.content.slice(0, 80)).join(' | ')
+      : '(none yet)';
+
+  const recentContents = recentPosts.map((p) => p.content);
   const otherBusinessNames = await getOtherBusinessNames(name);
+  const draft = pickTemplate(recentContents, name, categoryLabel, locationCity);
 
-  const draft = pickTemplate(recentContents, name, category, city);
+  const currentDayOfWeek = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const currentMonth = new Date().toLocaleDateString('en-US', { month: 'long' });
+  const variationSeed = Math.floor(Math.random() * 100);
+  const businessFocus = getBusinessFocus(name, categoryLabel);
 
   if (!apiKey) {
     console.warn(
@@ -147,23 +157,33 @@ export async function generatePostContent(
     return draft;
   }
 
-  const recentSection = recentContents.length > 0
-    ? `\n\nRecent posts for this same business (change wording only; do NOT copy another business name from these):\n${recentContents.map((c, i) => `${i + 1}. "${c}"`).join('\n')}`
-    : '';
+  const userPrompt = `You are writing a Google Business Profile post for ${name}, a ${categoryLabel} business in ${locationCity}.
 
-  const userPrompt = `Business name (must stay exactly this name in the post): "${name}"
+Today is ${currentDayOfWeek} in ${currentMonth}. Post number ${dayOfYear}. Variation seed ${variationSeed}.
 
-Here is the owner's draft:
+Business focus for this post: ${businessFocus}
 
-"${draft}"${recentSection}
+RECENT POSTS ALREADY WRITTEN — DO NOT REPEAT ANY OF THESE OPENINGS, THEMES, STRUCTURES OR IDEAS:
+${recentPostsSummary}
 
-Change only 8 to 12 words max. Keep everything else exactly the same. Do not rewrite or restructure. Do not shorten it or remove any sentences. The business name "${name}" must remain in the post unchanged. Do not mention any other business. Just swap a few non-name words for similar ones.`;
+You must write something completely different from all of the above. Different opening word. Different scenario. Different angle. Different sentence structure. Pretend something genuinely new happened today at this business.
+
+Rules:
+- First person casual tone like a real business owner texting a neighbor
+- Must relate specifically to ${businessFocus} with real industry scenarios
+- Feel like a different moment and situation every time
+- Under 80 words
+- Mention ${name} naturally once
+- Sound human not AI
+- Current day: ${currentDayOfWeek}, Current month: ${currentMonth}
+
+Be creative. Surprise me with a fresh angle every single time.`;
 
   try {
     const client = new OpenAI({ apiKey });
     const completion = await client.chat.completions.create({
       model: 'gpt-4o-mini',
-      temperature: 0.3,
+      temperature: 0.8,
       max_tokens: 200,
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
