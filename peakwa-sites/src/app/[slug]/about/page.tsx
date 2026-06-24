@@ -1,0 +1,116 @@
+import { notFound } from 'next/navigation';
+import { Breadcrumbs } from '@/src/components/Breadcrumbs';
+import { HeroBanner } from '@/src/components/HeroBanner';
+import { SectionWrapper } from '@/src/components/SectionWrapper';
+import { SiteImage } from '@/src/components/SiteImage';
+import { getSiteBySlug } from '@/src/lib/api';
+import { parseJson, type AboutContent } from '@/src/lib/content';
+import { getSiteImages } from '@/src/lib/images';
+import { hexToRgb, resolveTheme } from '@/src/lib/theme';
+
+type PageProps = { params: Promise<{ slug: string }> };
+
+function colorWithOpacity(hex: string, opacity: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+}
+
+export default async function AboutPage({ params }: PageProps) {
+  const { slug } = await params;
+  const site = await getSiteBySlug(slug);
+  if (!site) notFound();
+
+  const images = await getSiteImages(slug);
+  const content = parseJson<AboutContent>(site.aboutContent, {});
+  const theme = resolveTheme(site);
+  const hero = content.hero ?? {};
+  const story = content.story ?? {};
+  const mission = content.mission ?? {};
+  const values = content.values ?? [];
+
+  return (
+    <>
+      <HeroBanner
+        site={site}
+        heroImage={images.hero}
+        title={hero.heading || 'About Us'}
+        subtitle={hero.subheading}
+      >
+        <Breadcrumbs site={site} items={[{ label: 'About' }]} />
+      </HeroBanner>
+
+      <SectionWrapper background="#fff">
+        <div className="grid items-center gap-12 md:grid-cols-2">
+          <div>
+            <p
+              className="text-6xl font-serif leading-none opacity-20"
+              style={{ color: theme.accentColor }}
+            >
+              “
+            </p>
+            <h2 className="text-3xl font-bold text-gray-900">{story.heading || 'Our Story'}</h2>
+            <div className="mt-8 space-y-6 text-lg leading-relaxed text-gray-600">
+              <p>{story.paragraph1}</p>
+              <p>{story.paragraph2}</p>
+            </div>
+          </div>
+          {images.about ? (
+            <div className="relative h-[300px] w-full overflow-hidden rounded-3xl md:h-[480px]">
+              <SiteImage
+                src={images.about}
+                alt={`${site.businessName} team and story`}
+                fill
+                className="object-cover"
+                fallback={
+                  <div
+                    className="h-full w-full"
+                    style={{ backgroundColor: colorWithOpacity(theme.accentColor, 0.15) }}
+                  />
+                }
+              />
+            </div>
+          ) : (
+            <div
+              className="flex h-[300px] items-center justify-center rounded-3xl md:h-[480px]"
+              style={{ backgroundColor: colorWithOpacity(theme.secondaryColor, 0.5) }}
+            >
+              <p className="text-6xl font-serif opacity-20" style={{ color: theme.accentColor }}>
+                “
+              </p>
+            </div>
+          )}
+        </div>
+      </SectionWrapper>
+
+      <SectionWrapper background={theme.secondaryColor}>
+        <blockquote
+          className="mx-auto max-w-3xl border-l-4 py-2 pl-6 text-2xl italic text-gray-800 md:text-3xl"
+          style={{ borderColor: theme.accentColor }}
+        >
+          {mission.statement || mission.heading}
+        </blockquote>
+      </SectionWrapper>
+
+      <SectionWrapper background="#fff">
+        <h2 className="mb-10 text-center text-3xl font-bold text-gray-900">Our Values</h2>
+        <div className="grid gap-8 md:grid-cols-3">
+          {values.map((v, i) => (
+            <article key={`${v.title}-${i}`} className="rounded-2xl border border-gray-100 p-8 shadow-sm">
+              <h3 className="text-xl font-bold text-gray-900">{v.title}</h3>
+              <p className="mt-3 text-gray-600">{v.description}</p>
+            </article>
+          ))}
+        </div>
+      </SectionWrapper>
+
+      {content.team ? (
+        <SectionWrapper background={theme.secondaryColor}>
+          <div className="mx-auto max-w-3xl text-center">
+            <h2 className="text-3xl font-bold text-gray-900">{content.team.heading}</h2>
+            <p className="mt-4 text-lg text-gray-600">{content.team.description}</p>
+          </div>
+        </SectionWrapper>
+      ) : null}
+    </>
+  );
+}

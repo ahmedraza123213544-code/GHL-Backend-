@@ -1,0 +1,32 @@
+import type { GeneratedSite, LocationPage } from './types';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
+const fetchOptions =
+  process.env.NODE_ENV === 'development'
+    ? { cache: 'no-store' as const }
+    : { next: { revalidate: 3600 } };
+
+export async function getSiteBySlug(slug: string): Promise<GeneratedSite | null> {
+  const res = await fetch(`${API_URL}/phase4/sites/${encodeURIComponent(slug)}`, fetchOptions);
+  if (!res.ok) return null;
+  const data = await res.json();
+  return data.data?.site || null;
+}
+
+export async function getAllSites(): Promise<GeneratedSite[]> {
+  const res = await fetch(`${API_URL}/phase4/sites`, fetchOptions);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.data?.sites || [];
+}
+
+export async function getLocationPages(slug: string): Promise<LocationPage[]> {
+  const res = await fetch(
+    `${API_URL}/phase4/sites/${encodeURIComponent(slug)}/location-pages`,
+    fetchOptions,
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.data?.pages || [];
+}

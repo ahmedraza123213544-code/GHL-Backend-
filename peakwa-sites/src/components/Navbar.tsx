@@ -1,0 +1,239 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { ChevronDown, Menu, Phone, X } from 'lucide-react';
+import clsx from 'clsx';
+import type { GeneratedSite, LocationPage, SiteTheme } from '@/src/lib/types';
+import type { HomeContent } from '@/src/lib/content';
+import { getTextColor } from '@/src/lib/theme';
+
+type NavbarProps = {
+  site: GeneratedSite;
+  theme: SiteTheme;
+  homeContent: HomeContent;
+  locations: LocationPage[];
+};
+
+const NAV_LINKS = [
+  { href: '', label: 'Home' },
+  { href: '/about', label: 'About' },
+  { href: '/services', label: 'Services' },
+  { href: '/blog', label: 'Blog' },
+  { href: '/contact', label: 'Contact' },
+] as const;
+
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+}
+
+export function Navbar({ site, theme, homeContent, locations }: NavbarProps) {
+  const pathname = usePathname();
+  const base = `/${site.slug}`;
+  const [open, setOpen] = useState(false);
+  const [servicesOpen, setServicesOpen] = useState(false);
+  const [locationsOpen, setLocationsOpen] = useState(false);
+
+  const services = homeContent.services ?? [];
+
+  function isActive(href: string) {
+    if (href === '') return pathname === base || pathname === `${base}/`;
+    return pathname.startsWith(`${base}${href}`);
+  }
+
+  return (
+    <header className="sticky top-0 z-50 border-b border-black/5 bg-white/80 backdrop-blur-md">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        <Link href={base} className="flex min-w-0 items-center gap-2">
+          <span
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
+            style={{ backgroundColor: theme.accentColor }}
+          />
+          <span className="truncate text-lg font-bold tracking-tight text-gray-900">
+            {site.businessName}
+          </span>
+        </Link>
+
+        <nav className="hidden items-center gap-6 lg:flex">
+          {NAV_LINKS.map((link) => {
+            if (link.label === 'Services' && services.length > 0) {
+              return (
+                <div key={link.label} className="relative group">
+                  <button
+                    type="button"
+                    className={clsx(
+                      'flex items-center gap-1 text-sm font-medium transition-colors',
+                      isActive(link.href) ? 'text-gray-900' : 'text-gray-600 hover:text-gray-900',
+                    )}
+                    style={
+                      isActive(link.href)
+                        ? { borderBottom: `2px solid ${theme.accentColor}` }
+                        : undefined
+                    }
+                  >
+                    Services
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                  <div className="invisible absolute left-0 top-full z-50 min-w-[220px] rounded-xl border border-gray-100 bg-white py-2 opacity-0 shadow-xl transition-all group-hover:visible group-hover:opacity-100">
+                    {services.map((s) => (
+                      <Link
+                        key={s.title}
+                        href={`${base}/services#${slugify(s.title || '')}`}
+                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                      >
+                        {s.title}
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <Link
+                key={link.label}
+                href={`${base}${link.href}`}
+                className={clsx(
+                  'text-sm font-medium transition-colors hover:text-gray-900',
+                  isActive(link.href) ? 'text-gray-900' : 'text-gray-600',
+                )}
+                style={
+                  isActive(link.href)
+                    ? { borderBottom: `2px solid ${theme.accentColor}`, paddingBottom: 2 }
+                    : undefined
+                }
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+
+          {locations.length > 0 ? (
+            <div className="relative group">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                Locations
+                <ChevronDown className="h-4 w-4" />
+              </button>
+              <div className="invisible absolute left-0 top-full z-50 min-w-[200px] rounded-xl border border-gray-100 bg-white py-2 opacity-0 shadow-xl transition-all group-hover:visible group-hover:opacity-100">
+                {locations.map((loc) => (
+                  <Link
+                    key={loc.id}
+                    href={`${base}/${loc.slug}`}
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    {loc.city}, {loc.county}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </nav>
+
+        {site.phone ? (
+          <a
+            href={`tel:${site.phone}`}
+            className="hidden items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 lg:inline-flex"
+            style={{
+              backgroundColor: theme.accentColor,
+              color: getTextColor(theme.accentColor),
+            }}
+          >
+            <Phone className="h-4 w-4" />
+            {site.phone}
+          </a>
+        ) : null}
+
+        <button
+          type="button"
+          className="inline-flex rounded-lg border border-gray-200 p-2 lg:hidden"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Toggle menu"
+        >
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
+      </div>
+
+      {open ? (
+        <div className="border-t border-gray-100 bg-white px-4 py-4 lg:hidden">
+          <div className="flex flex-col gap-2">
+            {NAV_LINKS.map((link) => (
+              <Link
+                key={link.label}
+                href={`${base}${link.href}`}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                onClick={() => setOpen(false)}
+              >
+                {link.label}
+              </Link>
+            ))}
+            {services.length > 0 ? (
+              <button
+                type="button"
+                className="flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-gray-700"
+                onClick={() => setServicesOpen((v) => !v)}
+              >
+                Services
+                <ChevronDown className={clsx('h-4 w-4 transition', servicesOpen && 'rotate-180')} />
+              </button>
+            ) : null}
+            {servicesOpen
+              ? services.map((s) => (
+                  <Link
+                    key={s.title}
+                    href={`${base}/services#${slugify(s.title || '')}`}
+                    className="rounded-lg px-6 py-2 text-sm text-gray-600"
+                    onClick={() => setOpen(false)}
+                  >
+                    {s.title}
+                  </Link>
+                ))
+              : null}
+            {locations.length > 0 ? (
+              <>
+                <button
+                  type="button"
+                  className="flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium text-gray-700"
+                  onClick={() => setLocationsOpen((v) => !v)}
+                >
+                  Locations
+                  <ChevronDown
+                    className={clsx('h-4 w-4 transition', locationsOpen && 'rotate-180')}
+                  />
+                </button>
+                {locationsOpen
+                  ? locations.map((loc) => (
+                      <Link
+                        key={loc.id}
+                        href={`${base}/${loc.slug}`}
+                        className="rounded-lg px-6 py-2 text-sm text-gray-600"
+                        onClick={() => setOpen(false)}
+                      >
+                        {loc.city}
+                      </Link>
+                    ))
+                  : null}
+              </>
+            ) : null}
+            {site.phone ? (
+              <a
+                href={`tel:${site.phone}`}
+                className="mt-2 inline-flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold"
+                style={{
+                  backgroundColor: theme.accentColor,
+                  color: getTextColor(theme.accentColor),
+                }}
+              >
+                <Phone className="h-4 w-4" />
+                {site.phone}
+              </a>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </header>
+  );
+}
