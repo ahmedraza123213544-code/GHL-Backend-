@@ -1,0 +1,1393 @@
+import { useCallback, useEffect, useState } from 'react';
+import { Loader2, MapPin, Minus, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import {
+  addLocationPages,
+  deletePhase4Site,
+  fetchPhase4Site,
+  fetchPhase4Sites,
+  regeneratePhase4Site,
+  updatePhase4Site,
+  type Phase4GeneratedSite,
+  type Phase4LocationInput,
+  type Phase4LocationPage,
+  type SiteStatus,
+} from '../api/endpoints';
+import { ErrorBanner, PageHeader, SuccessBanner } from '../components/ui';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
+import { Button } from '../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../components/ui/select';
+import { CardListSkeleton, TableSkeleton } from '../components/ui/skeleton';
+import { cn } from '../lib/utils';
+import { formatDate } from '../utils/format';
+
+type SiteTab = 'home' | 'about' | 'services' | 'contact' | 'blog' | 'locations';
+type EditTab = 'business' | 'colors' | 'regenerate' | 'status';
+
+type SiteExtraFields = {
+  address?: string | null;
+  facebookUrl?: string | null;
+  instagramUrl?: string | null;
+  websiteUrl?: string | null;
+  logoUrl?: string | null;
+};
+
+type SiteUpdatePayload = Parameters<typeof updatePhase4Site>[1] &
+  SiteExtraFields & {
+    industry?: string;
+    logoUrl?: string | null;
+  };
+
+type SiteThemeFields = {
+  primaryColor?: string;
+  secondaryColor?: string;
+  accentColor?: string;
+  heroStyle?: string;
+  fontStyle?: string;
+  theme?: SiteThemeFields;
+};
+
+type SiteWithTheme = Phase4GeneratedSite & SiteThemeFields & SiteExtraFields;
+
+function normalizeColorHex(color: string | undefined | null, fallback: string) {
+  const trimmed = String(color ?? '').trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(trimmed)) return trimmed.toUpperCase();
+  if (/^[0-9A-Fa-f]{6}$/.test(trimmed)) return trimmed.toUpperCase();
+  return fallback;
+}
+
+function getSiteTheme(site: SiteWithTheme) {
+  return {
+    primaryColor: site.theme?.primaryColor ?? site.primaryColor ?? '#1F2937',
+    secondaryColor: site.theme?.secondaryColor ?? site.secondaryColor ?? '#F3F4F6',
+    accentColor: site.theme?.accentColor ?? site.accentColor ?? '#6366F1',
+    heroStyle: site.theme?.heroStyle ?? site.heroStyle ?? 'dark',
+    fontStyle: site.theme?.fontStyle ?? site.fontStyle ?? 'modern',
+  };
+}
+
+function ThemeColorSwatch({ label, color }: { label: string; color: string }) {
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        className="h-10 w-10 shrink-0 rounded-full border border-slate-700 shadow-inner"
+        style={{ backgroundColor: color }}
+        aria-hidden
+      />
+      <div className="min-w-0">
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className="font-mono text-sm uppercase text-slate-200">{color}</p>
+      </div>
+    </div>
+  );
+}
+
+function SiteThemeSection({ site }: { site: SiteWithTheme }) {
+  const theme = getSiteTheme(site);
+
+  return (
+    <div className="rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+      <p className="mb-3 text-sm font-medium text-white">Theme</p>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <ThemeColorSwatch label="Primary Color" color={theme.primaryColor} />
+        <ThemeColorSwatch label="Secondary Color" color={theme.secondaryColor} />
+        <ThemeColorSwatch label="Accent Color" color={theme.accentColor} />
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className="inline-flex items-center rounded-full bg-slate-800 px-3 py-1 text-xs font-medium capitalize text-slate-200 ring-1 ring-inset ring-slate-700">
+          Hero: {theme.heroStyle}
+        </span>
+        <span className="inline-flex items-center rounded-full bg-slate-800 px-3 py-1 text-xs font-medium capitalize text-slate-200 ring-1 ring-inset ring-slate-700">
+          Font: {theme.fontStyle}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const inputClass =
+  'w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/40';
+
+function SiteStatusBadge({ status }: { status: SiteStatus }) {
+  const styles: Record<SiteStatus, string> = {
+    PENDING: 'bg-amber-500/15 text-amber-400 ring-amber-500/30',
+    ACTIVE: 'bg-emerald-500/15 text-emerald-400 ring-emerald-500/30',
+    INACTIVE: 'bg-red-500/15 text-red-400 ring-red-500/30',
+  };
+
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset',
+        styles[status],
+      )}
+    >
+      {status}
+    </span>
+  );
+}
+
+function parseJsonContent(value: string | null | undefined): unknown {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+function ReadableValue({ value }: { value: unknown }) {
+  if (value === null || value === undefined) {
+    return <span className="text-slate-600">—</span>;
+  }
+
+  if (typeof value === 'string') {
+    return <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-300">{value}</p>;
+  }
+
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return <span className="text-sm text-slate-300">{String(value)}</span>;
+  }
+
+  if (Array.isArray(value)) {
+    return (
+      <div className="space-y-3">
+        {value.map((item, index) => (
+          <div
+            key={index}
+            className="rounded-lg border border-slate-800 bg-slate-950/60 p-3"
+          >
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+              Item {index + 1}
+            </p>
+            <ReadableValue value={item} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (typeof value === 'object') {
+    return (
+      <dl className="space-y-3">
+        {Object.entries(value as Record<string, unknown>).map(([key, val]) => (
+          <div key={key}>
+            <dt className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">
+              {key.replace(/([A-Z])/g, ' $1').trim()}
+            </dt>
+            <dd>
+              <ReadableValue value={val} />
+            </dd>
+          </div>
+        ))}
+      </dl>
+    );
+  }
+
+  return <span className="text-sm text-slate-300">{String(value)}</span>;
+}
+
+function PageContentPanel({ content }: { content: string | null }) {
+  const parsed = parseJsonContent(content);
+
+  if (!parsed) {
+    return (
+      <p className="py-8 text-center text-sm text-slate-500">No content generated for this page.</p>
+    );
+  }
+
+  return (
+    <div className="max-h-[min(50vh,420px)] overflow-y-auto rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+      <ReadableValue value={parsed} />
+    </div>
+  );
+}
+
+function emptyLocationRow(): Phase4LocationInput {
+  return { city: '', county: '', state: 'NJ' };
+}
+
+function ColorField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const normalized = normalizeColorHex(value, '#000000');
+  const pickerValue = normalized.startsWith('#') ? normalized : `#${normalized}`;
+
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-slate-500">{label}</label>
+      <div className="flex gap-2">
+        <input
+          type="color"
+          value={pickerValue}
+          onChange={(e) => onChange(e.target.value.toUpperCase())}
+          className="h-10 w-12 shrink-0 cursor-pointer rounded border border-slate-700 bg-slate-950 p-1"
+          aria-label={`${label} picker`}
+        />
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputClass}
+          placeholder="#000000"
+        />
+      </div>
+    </div>
+  );
+}
+
+function ThemePreviewCircles({
+  primaryColor,
+  secondaryColor,
+  accentColor,
+}: {
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+}) {
+  return (
+    <div className="flex items-center gap-4 rounded-lg border border-slate-800 bg-slate-950/50 p-4">
+      <p className="text-xs font-medium text-slate-500">Live preview</p>
+      <div className="flex items-center gap-3">
+        {[
+          { color: primaryColor, label: 'Primary' },
+          { color: secondaryColor, label: 'Secondary' },
+          { color: accentColor, label: 'Accent' },
+        ].map((item) => (
+          <div key={item.label} className="flex flex-col items-center gap-1">
+            <span
+              className="h-10 w-10 rounded-full border border-slate-700 shadow-inner"
+              style={{ backgroundColor: item.color }}
+              title={item.label}
+            />
+            <span className="text-[10px] text-slate-500">{item.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function GeneratedSitesPage() {
+  const [sites, setSites] = useState<Phase4GeneratedSite[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedSite, setSelectedSite] = useState<SiteWithTheme | null>(null);
+  const [activeTab, setActiveTab] = useState<SiteTab>('home');
+  const [locationDialogOpen, setLocationDialogOpen] = useState(false);
+  const [locationRows, setLocationRows] = useState<Phase4LocationInput[]>([emptyLocationRow()]);
+  const [addingLocations, setAddingLocations] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Phase4GeneratedSite | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editLoading, setEditLoading] = useState(false);
+  const [editTarget, setEditTarget] = useState<SiteWithTheme | null>(null);
+  const [editTab, setEditTab] = useState<EditTab>('business');
+  const [editData, setEditData] = useState<Record<string, string>>({});
+  const [savingBusiness, setSavingBusiness] = useState(false);
+  const [savingTheme, setSavingTheme] = useState(false);
+  const [savingStatus, setSavingStatus] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [editSuccess, setEditSuccess] = useState<string | null>(null);
+
+  function populateEditForms(siteData: SiteWithTheme) {
+    setEditData({
+      businessName: siteData.businessName || '',
+      industry: siteData.industry || '',
+      phone: siteData.phone || '',
+      email: siteData.email || '',
+      description: siteData.description || '',
+      city: siteData.city || '',
+      state: siteData.state || '',
+      address: siteData.address || '',
+      facebookUrl: siteData.facebookUrl || '',
+      instagramUrl: siteData.instagramUrl || '',
+      websiteUrl: siteData.websiteUrl || '',
+      primaryColor: siteData.primaryColor || siteData.theme?.primaryColor || '#1F2937',
+      secondaryColor: siteData.secondaryColor || siteData.theme?.secondaryColor || '#F3F4F6',
+      accentColor: siteData.accentColor || siteData.theme?.accentColor || '#6366F1',
+      heroStyle: siteData.heroStyle || siteData.theme?.heroStyle || 'dark',
+      fontStyle: siteData.fontStyle || siteData.theme?.fontStyle || 'modern',
+      logoUrl: siteData.logoUrl || '',
+      status: siteData.status || 'ACTIVE',
+    });
+  }
+
+  const loadSites = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchPhase4Sites();
+      setSites(data);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load sites');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSites();
+  }, [loadSites]);
+
+  async function openDetails(site: Phase4GeneratedSite) {
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setActiveTab('home');
+    setError(null);
+    try {
+      const full = await fetchPhase4Site(site.slug);
+      setSelectedSite(full);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load site details');
+      setSelectedSite(site);
+    } finally {
+      setDetailLoading(false);
+    }
+  }
+
+  async function openEdit(site: Phase4GeneratedSite) {
+    setEditOpen(true);
+    setEditTab('business');
+    setEditSuccess(null);
+    setEditLoading(true);
+    setEditTarget(site);
+
+    try {
+      const fetched = await fetchPhase4Site(site.slug);
+      const siteData = { ...site, ...fetched } as SiteWithTheme;
+      setEditTarget(siteData);
+      populateEditForms(siteData);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load site for editing');
+      populateEditForms(site as SiteWithTheme);
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  async function refreshAfterEdit(updated: Phase4GeneratedSite, message: string) {
+    const merged = { ...(editTarget ?? {}), ...updated } as SiteWithTheme;
+    setSites((prev) =>
+      prev.map((s) => (s.id === updated.id ? { ...s, ...updated, template: s.template } : s)),
+    );
+    setEditTarget(merged);
+    populateEditForms(merged);
+    if (selectedSite?.id === updated.id) {
+      setSelectedSite((prev) => (prev ? { ...prev, ...updated } : prev));
+    }
+    setEditSuccess(message);
+    setSuccess(message);
+    await loadSites();
+  }
+
+  async function handleSaveBusiness(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget || savingBusiness) return;
+
+    setSavingBusiness(true);
+    setError(null);
+    setEditSuccess(null);
+    try {
+      const updated = await updatePhase4Site(editTarget.id, {
+        businessName: editData.businessName?.trim() ?? '',
+        industry: editData.industry?.trim() ?? '',
+        phone: editData.phone?.trim() || null,
+        email: editData.email?.trim() || null,
+        description: editData.description?.trim() || null,
+        address: editData.address?.trim() || null,
+        city: editData.city?.trim() ?? '',
+        state: editData.state?.trim() || 'NJ',
+        facebookUrl: editData.facebookUrl?.trim() || null,
+        instagramUrl: editData.instagramUrl?.trim() || null,
+        websiteUrl: editData.websiteUrl?.trim() || null,
+      } as SiteUpdatePayload);
+      await refreshAfterEdit(updated, 'Business info saved.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save business info');
+    } finally {
+      setSavingBusiness(false);
+    }
+  }
+
+  async function handleSaveTheme(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget || savingTheme) return;
+
+    setSavingTheme(true);
+    setError(null);
+    setEditSuccess(null);
+    try {
+      const updated = await updatePhase4Site(editTarget.id, {
+        primaryColor: normalizeColorHex(editData.primaryColor, '#1F2937'),
+        secondaryColor: normalizeColorHex(editData.secondaryColor, '#F3F4F6'),
+        accentColor: normalizeColorHex(editData.accentColor, '#6366F1'),
+        heroStyle: (editData.heroStyle === 'light' ? 'light' : 'dark') as 'dark' | 'light',
+        fontStyle: (
+          editData.fontStyle === 'classic' || editData.fontStyle === 'friendly'
+            ? editData.fontStyle
+            : 'modern'
+        ) as 'modern' | 'classic' | 'friendly',
+        logoUrl: editData.logoUrl?.trim() || null,
+      } as SiteUpdatePayload);
+      await refreshAfterEdit(updated, 'Theme colors saved.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save theme');
+    } finally {
+      setSavingTheme(false);
+    }
+  }
+
+  async function handleSaveStatus(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editTarget || savingStatus) return;
+
+    setSavingStatus(true);
+    setError(null);
+    setEditSuccess(null);
+    try {
+      const updated = await updatePhase4Site(editTarget.id, {
+        status: (editData.status || 'ACTIVE') as SiteStatus,
+      });
+      await refreshAfterEdit(updated, 'Status updated.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save status');
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  async function handleRegenerateSite() {
+    if (!editTarget || regenerating) return;
+
+    setRegenerating(true);
+    setError(null);
+    setEditSuccess(null);
+    try {
+      const updated = await regeneratePhase4Site(editTarget.id);
+      await refreshAfterEdit(updated, 'Site content and theme regenerated.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to regenerate site');
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
+  async function handleAddLocationPages(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedSite) return;
+
+    const locations = locationRows
+      .map((row) => ({
+        city: row.city.trim(),
+        county: row.county.trim(),
+        state: row.state?.trim() || 'NJ',
+      }))
+      .filter((row) => row.city && row.county);
+
+    if (locations.length === 0) {
+      setError('Add at least one city and county.');
+      return;
+    }
+
+    setAddingLocations(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await addLocationPages(selectedSite.id, locations);
+      const refreshed = await fetchPhase4Site(selectedSite.slug);
+      setSelectedSite(refreshed);
+      setLocationDialogOpen(false);
+      setLocationRows([emptyLocationRow()]);
+      setActiveTab('locations');
+      setSuccess(`Added ${locations.length} location page(s).`);
+      await loadSites();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add location pages');
+    } finally {
+      setAddingLocations(false);
+    }
+  }
+
+  async function handleDeleteSite(e: React.MouseEvent) {
+    e.preventDefault();
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      await deletePhase4Site(deleteTarget.id);
+      setSites((prev) => prev.filter((s) => s.id !== deleteTarget.id));
+      if (selectedSite?.id === deleteTarget.id) {
+        setDetailOpen(false);
+        setSelectedSite(null);
+      }
+      setSuccess(`"${deleteTarget.businessName}" deleted.`);
+      setDeleteTarget(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete site');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  const tabs: { id: SiteTab; label: string; content: string | null | undefined }[] =
+    selectedSite
+      ? [
+          { id: 'home', label: 'Home', content: selectedSite.homeContent },
+          { id: 'about', label: 'About', content: selectedSite.aboutContent },
+          { id: 'services', label: 'Services', content: selectedSite.servicesContent },
+          { id: 'contact', label: 'Contact', content: selectedSite.contactContent },
+          { id: 'blog', label: 'Blog', content: selectedSite.blogContent },
+          { id: 'locations', label: 'Location Pages', content: null },
+        ]
+      : [];
+
+  return (
+    <div>
+      <PageHeader
+        title="Generated Sites"
+        description="View AI-generated websites and manage location landing pages."
+      />
+
+      {error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
+      {success ? <SuccessBanner message={success} /> : null}
+
+      {loading ? (
+        <>
+          <CardListSkeleton count={4} />
+          <div className="mt-6 hidden lg:block">
+            <TableSkeleton rows={5} />
+          </div>
+        </>
+      ) : sites.length === 0 ? (
+        <div className="rounded-xl border border-slate-800 bg-slate-900/40 py-16 text-center text-sm text-slate-500">
+          No generated sites yet. Sites are created via the Phase 4 webhook.
+        </div>
+      ) : (
+        <>
+          {/* Mobile cards */}
+          <div className="space-y-4 lg:hidden">
+            {sites.map((site) => (
+              <div
+                key={site.id}
+                className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
+              >
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium text-white">{site.businessName}</p>
+                    <p className="mt-0.5 text-xs capitalize text-slate-500">{site.industry}</p>
+                  </div>
+                  <SiteStatusBadge status={site.status} />
+                </div>
+                <dl className="mb-4 space-y-1 text-sm">
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">City</dt>
+                    <dd className="text-slate-300">
+                      {site.city}, {site.state}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">Slug</dt>
+                    <dd className="truncate font-mono text-xs text-slate-400">{site.slug}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">Template</dt>
+                    <dd className="text-slate-300">{site.template?.name ?? '—'}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">Created</dt>
+                    <dd className="text-slate-300">{formatDate(site.createdAt)}</dd>
+                  </div>
+                </dl>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => void openDetails(site)}
+                  >
+                    View Details
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => void openEdit(site)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                    onClick={() => setDeleteTarget(site)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden overflow-hidden rounded-xl border border-slate-800 lg:block">
+            <table className="min-w-full divide-y divide-slate-800">
+              <thead className="bg-slate-900/80">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Business Name
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Industry
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                    City
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Slug
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Template
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Created
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800 bg-slate-900/40">
+                {sites.map((site) => (
+                  <tr key={site.id} className="hover:bg-slate-800/30">
+                    <td className="px-4 py-3 text-sm font-medium text-slate-200">
+                      {site.businessName}
+                    </td>
+                    <td className="px-4 py-3 text-sm capitalize text-slate-400">
+                      {site.industry}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-300">
+                      {site.city}, {site.state}
+                    </td>
+                    <td className="max-w-[140px] truncate px-4 py-3 font-mono text-xs text-slate-400">
+                      {site.slug}
+                    </td>
+                    <td className="px-4 py-3">
+                      <SiteStatusBadge status={site.status} />
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-300">
+                      {site.template?.name ?? '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-400">
+                      {formatDate(site.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void openDetails(site)}
+                        >
+                          View Details
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void openEdit(site)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                          onClick={() => setDeleteTarget(site)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{selectedSite?.businessName ?? 'Site details'}</DialogTitle>
+            <DialogDescription>
+              Generated website content and location pages
+            </DialogDescription>
+          </DialogHeader>
+
+          {detailLoading ? (
+            <div className="flex items-center justify-center py-12 text-slate-400">
+              <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              Loading site details…
+            </div>
+          ) : selectedSite ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 rounded-lg border border-slate-800 bg-slate-950/50 p-4 sm:grid-cols-2">
+                <div>
+                  <p className="text-xs text-slate-500">Industry</p>
+                  <p className="text-sm capitalize text-slate-200">{selectedSite.industry}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Location</p>
+                  <p className="text-sm text-slate-200">
+                    {selectedSite.city}, {selectedSite.state}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Slug</p>
+                  <p className="font-mono text-sm text-slate-300">{selectedSite.slug}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Status</p>
+                  <div className="mt-1">
+                    <SiteStatusBadge status={selectedSite.status} />
+                  </div>
+                </div>
+                {selectedSite.phone ? (
+                  <div>
+                    <p className="text-xs text-slate-500">Phone</p>
+                    <p className="text-sm text-slate-200">{selectedSite.phone}</p>
+                  </div>
+                ) : null}
+                {selectedSite.email ? (
+                  <div>
+                    <p className="text-xs text-slate-500">Email</p>
+                    <p className="text-sm text-slate-200">{selectedSite.email}</p>
+                  </div>
+                ) : null}
+                {selectedSite.description ? (
+                  <div className="sm:col-span-2">
+                    <p className="text-xs text-slate-500">Description</p>
+                    <p className="text-sm text-slate-300">{selectedSite.description}</p>
+                  </div>
+                ) : null}
+              </div>
+
+              <SiteThemeSection site={selectedSite} />
+
+              <div className="flex flex-wrap gap-1 border-b border-slate-800 pb-1">
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={cn(
+                      'rounded-t-lg px-3 py-2 text-sm font-medium transition-colors',
+                      activeTab === tab.id
+                        ? 'bg-slate-800 text-emerald-400'
+                        : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200',
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {activeTab === 'locations' ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-slate-400">
+                      {selectedSite.locationPages?.length ?? 0} location page(s)
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setLocationRows([emptyLocationRow()]);
+                        setLocationDialogOpen(true);
+                      }}
+                    >
+                      <MapPin className="h-4 w-4" />
+                      Add Location Pages
+                    </Button>
+                  </div>
+
+                  {(selectedSite.locationPages?.length ?? 0) === 0 ? (
+                    <p className="py-8 text-center text-sm text-slate-500">
+                      No location pages yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {selectedSite.locationPages?.map((page: Phase4LocationPage) => (
+                        <div
+                          key={page.id}
+                          className="rounded-lg border border-slate-800 bg-slate-950/40 p-4"
+                        >
+                          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-white">
+                                {page.city}, {page.county} County
+                              </p>
+                              <p className="font-mono text-xs text-slate-500">{page.slug}</p>
+                            </div>
+                            <span className="text-xs text-slate-500">
+                              {formatDate(page.createdAt)}
+                            </span>
+                          </div>
+                          <PageContentPanel content={page.content} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <PageContentPanel
+                  content={tabs.find((t) => t.id === activeTab)?.content ?? null}
+                />
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent key={editTarget?.id} className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit {editTarget?.businessName ?? 'site'}</DialogTitle>
+            <DialogDescription>Update business info, theme, status, or regenerate content.</DialogDescription>
+          </DialogHeader>
+
+          {editTarget ? (
+            <div className="space-y-4">
+              {editLoading ? (
+                <div className="flex items-center justify-center py-12 text-slate-400">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Loading site data…
+                </div>
+              ) : (
+                <div className="space-y-4">
+              {editSuccess ? (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400">
+                  {editSuccess}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-1 border-b border-slate-800 pb-1">
+                {[
+                  { id: 'business' as const, label: 'Business Info' },
+                  { id: 'colors' as const, label: 'Colors & Theme' },
+                  { id: 'regenerate' as const, label: 'Regenerate' },
+                  { id: 'status' as const, label: 'Status' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setEditTab(tab.id)}
+                    className={cn(
+                      'rounded-t-lg px-3 py-2 text-sm font-medium transition-colors',
+                      editTab === tab.id
+                        ? 'bg-slate-800 text-emerald-400'
+                        : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200',
+                    )}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {editTab === 'business' ? (
+                <form onSubmit={(e) => void handleSaveBusiness(e)} className="space-y-4">
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                    Changing business name, industry or city will regenerate all page content
+                    automatically.
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">
+                      Business Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editData.businessName || ''}
+                      onChange={(e) =>
+                        setEditData((prev) => ({ ...prev, businessName: e.target.value }))
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Industry</label>
+                    <input
+                      type="text"
+                      required
+                      value={editData.industry || ''}
+                      onChange={(e) =>
+                        setEditData((prev) => ({ ...prev, industry: e.target.value }))
+                      }
+                      className={inputClass}
+                      placeholder="hvac, automotive, plumbing"
+                    />
+                    <p className="mt-1 text-xs text-amber-400/80">
+                      Changing industry will regenerate all page content automatically.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-500">Phone</label>
+                      <input
+                        type="text"
+                        value={editData.phone || ''}
+                        onChange={(e) =>
+                          setEditData((prev) => ({ ...prev, phone: e.target.value }))
+                        }
+                        className={inputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-500">Email</label>
+                      <input
+                        type="email"
+                        value={editData.email || ''}
+                        onChange={(e) =>
+                          setEditData((prev) => ({ ...prev, email: e.target.value }))
+                        }
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">
+                      Description
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={editData.description || ''}
+                      onChange={(e) =>
+                        setEditData((prev) => ({ ...prev, description: e.target.value }))
+                      }
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">
+                      Full Address
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={editData.address || ''}
+                      onChange={(e) =>
+                        setEditData((prev) => ({ ...prev, address: e.target.value }))
+                      }
+                      className={inputClass}
+                      placeholder="123 Main St, Suite 100"
+                    />
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-500">City</label>
+                      <input
+                        type="text"
+                        required
+                        value={editData.city || ''}
+                        onChange={(e) =>
+                          setEditData((prev) => ({ ...prev, city: e.target.value }))
+                        }
+                        className={inputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-500">State</label>
+                      <input
+                        type="text"
+                        required
+                        value={editData.state || ''}
+                        onChange={(e) =>
+                          setEditData((prev) => ({ ...prev, state: e.target.value }))
+                        }
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-1">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-500">
+                        Facebook URL
+                      </label>
+                      <input
+                        type="url"
+                        value={editData.facebookUrl || ''}
+                        onChange={(e) =>
+                          setEditData((prev) => ({ ...prev, facebookUrl: e.target.value }))
+                        }
+                        className={inputClass}
+                        placeholder="https://facebook.com/..."
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-500">
+                        Instagram URL
+                      </label>
+                      <input
+                        type="url"
+                        value={editData.instagramUrl || ''}
+                        onChange={(e) =>
+                          setEditData((prev) => ({ ...prev, instagramUrl: e.target.value }))
+                        }
+                        className={inputClass}
+                        placeholder="https://instagram.com/..."
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-500">
+                        Website URL
+                      </label>
+                      <input
+                        type="url"
+                        value={editData.websiteUrl || ''}
+                        onChange={(e) =>
+                          setEditData((prev) => ({ ...prev, websiteUrl: e.target.value }))
+                        }
+                        className={inputClass}
+                        placeholder="https://yourbusiness.com"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={savingBusiness}>
+                      {savingBusiness ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Save Business Info
+                    </Button>
+                  </div>
+                </form>
+              ) : null}
+
+              {editTab === 'colors' ? (
+                <form onSubmit={(e) => void handleSaveTheme(e)} className="space-y-4">
+                  <ThemePreviewCircles
+                    primaryColor={editData.primaryColor || '#1F2937'}
+                    secondaryColor={editData.secondaryColor || '#F3F4F6'}
+                    accentColor={editData.accentColor || '#6366F1'}
+                  />
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Logo URL</label>
+                    <input
+                      type="url"
+                      value={editData.logoUrl || ''}
+                      onChange={(e) =>
+                        setEditData((prev) => ({ ...prev, logoUrl: e.target.value }))
+                      }
+                      className={inputClass}
+                      placeholder="https://example.com/logo.png"
+                    />
+                    {editData.logoUrl ? (
+                      <div className="mt-3 flex items-center gap-3 rounded-lg border border-slate-800 bg-slate-950/50 p-3">
+                        <img
+                          src={editData.logoUrl}
+                          alt="Logo preview"
+                          className="h-12 max-w-[120px] rounded object-contain"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                        <span className="text-xs text-slate-500">Logo preview</span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <ColorField
+                    label="Primary Color"
+                    value={editData.primaryColor || '#1F2937'}
+                    onChange={(primaryColor) =>
+                      setEditData((prev) => ({ ...prev, primaryColor }))
+                    }
+                  />
+                  <ColorField
+                    label="Secondary Color"
+                    value={editData.secondaryColor || '#F3F4F6'}
+                    onChange={(secondaryColor) =>
+                      setEditData((prev) => ({ ...prev, secondaryColor }))
+                    }
+                  />
+                  <ColorField
+                    label="Accent Color"
+                    value={editData.accentColor || '#6366F1'}
+                    onChange={(accentColor) =>
+                      setEditData((prev) => ({ ...prev, accentColor }))
+                    }
+                  />
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-500">
+                        Hero Style
+                      </label>
+                      <Select
+                        value={editData.heroStyle || 'dark'}
+                        onValueChange={(value: 'dark' | 'light') =>
+                          setEditData((prev) => ({ ...prev, heroStyle: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Hero style" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="dark">Dark</SelectItem>
+                          <SelectItem value="light">Light</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-slate-500">
+                        Font Style
+                      </label>
+                      <Select
+                        value={editData.fontStyle || 'modern'}
+                        onValueChange={(value: 'modern' | 'classic' | 'friendly') =>
+                          setEditData((prev) => ({ ...prev, fontStyle: value }))
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Font style" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="modern">Modern</SelectItem>
+                          <SelectItem value="classic">Classic</SelectItem>
+                          <SelectItem value="friendly">Friendly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={savingTheme}>
+                      {savingTheme ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Save Theme
+                    </Button>
+                  </div>
+                </form>
+              ) : null}
+
+              {editTab === 'regenerate' ? (
+                <div className="space-y-4">
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-4 text-sm text-amber-100">
+                    This will regenerate ALL page content and theme using AI. Current content will be
+                    replaced.
+                  </div>
+                  <Button
+                    type="button"
+                    className="w-full py-6 text-base"
+                    disabled={regenerating}
+                    onClick={() => void handleRegenerateSite()}
+                  >
+                    {regenerating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                    Regenerate Site
+                  </Button>
+                </div>
+              ) : null}
+
+              {editTab === 'status' ? (
+                <form onSubmit={(e) => void handleSaveStatus(e)} className="space-y-4">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">Status</label>
+                    <Select
+                      value={editData.status || 'ACTIVE'}
+                      onValueChange={(value: SiteStatus) =>
+                        setEditData((prev) => ({ ...prev, status: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="PENDING">PENDING</SelectItem>
+                        <SelectItem value="ACTIVE">ACTIVE</SelectItem>
+                        <SelectItem value="INACTIVE">INACTIVE</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex justify-end">
+                    <Button type="submit" disabled={savingStatus}>
+                      {savingStatus ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                      Save Status
+                    </Button>
+                  </div>
+                </form>
+              ) : null}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={locationDialogOpen} onOpenChange={setLocationDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add location pages</DialogTitle>
+            <DialogDescription>
+              Generate SEO landing pages for additional cities served by{' '}
+              {selectedSite?.businessName}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddLocationPages} className="space-y-4">
+            <div className="max-h-[min(50vh,360px)] space-y-3 overflow-y-auto pr-1">
+              {locationRows.map((row, index) => (
+                <div
+                  key={index}
+                  className="grid gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-3 sm:grid-cols-[1fr_1fr_auto]"
+                >
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">City</label>
+                    <input
+                      type="text"
+                      required
+                      value={row.city}
+                      onChange={(e) => {
+                        const next = [...locationRows];
+                        next[index] = { ...next[index], city: e.target.value };
+                        setLocationRows(next);
+                      }}
+                      className={inputClass}
+                      placeholder="Hackensack"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-slate-500">County</label>
+                    <input
+                      type="text"
+                      required
+                      value={row.county}
+                      onChange={(e) => {
+                        const next = [...locationRows];
+                        next[index] = { ...next[index], county: e.target.value };
+                        setLocationRows(next);
+                      }}
+                      className={inputClass}
+                      placeholder="Bergen"
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      disabled={locationRows.length <= 1}
+                      onClick={() =>
+                        setLocationRows((rows) => rows.filter((_, i) => i !== index))
+                      }
+                      aria-label="Remove row"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setLocationRows((rows) => [...rows, emptyLocationRow()])}
+            >
+              <Plus className="h-4 w-4" />
+              Add row
+            </Button>
+
+            <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setLocationDialogOpen(false)}
+                disabled={addingLocations}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={addingLocations}>
+                {addingLocations ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Generate pages
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent
+          onEscapeKeyDown={(e) => {
+            if (deleting) e.preventDefault();
+          }}
+          onPointerDownOutside={(e) => {
+            if (deleting) e.preventDefault();
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete generated site?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this site and all its location pages
+              {deleteTarget ? ` for "${deleteTarget.businessName}".` : '.'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="danger"
+              loading={deleting}
+              disabled={deleting}
+              onClick={(e) => void handleDeleteSite(e)}
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}

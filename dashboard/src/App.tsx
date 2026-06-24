@@ -3,11 +3,13 @@ import { LocationsProvider } from './contexts/LocationsContext';
 import { Layout } from './components/Layout';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
 import { DailyJobPage } from './pages/DailyJobPage';
+import { GeneratedSitesPage } from './pages/GeneratedSitesPage';
 import { GhlStatusPage } from './pages/GhlStatusPage';
 import { MediaLibraryPage } from './pages/MediaLibraryPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { PostsPage } from './pages/PostsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { TemplatesPage } from './pages/TemplatesPage';
 
 export default function App() {
   return (
@@ -22,6 +24,8 @@ export default function App() {
             <Route path="media" element={<MediaLibraryPage />} />
             <Route path="approval" element={<ApprovalQueuePage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="templates" element={<TemplatesPage />} />
+            <Route path="sites" element={<GeneratedSitesPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

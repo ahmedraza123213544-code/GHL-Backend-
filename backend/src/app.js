@@ -11,6 +11,7 @@ import jobsRoutes from './routes/jobs.routes.js';
 import testRoutes from './routes/test.routes.js';
 import setupRoutes from './routes/setup.routes.js';
 import scheduleRoutes from './routes/schedule.routes.js';
+import phase4Routes from './routes/phase4.routes.js';
 
 export function createApp() {
   const app = express();
@@ -48,6 +49,7 @@ export function createApp() {
   }
 
   app.use('/setup', setupRoutes);
+  app.use('/phase4', phase4Routes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

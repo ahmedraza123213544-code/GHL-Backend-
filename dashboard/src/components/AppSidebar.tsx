@@ -1,7 +1,9 @@
 import {
   CalendarClock,
   ClipboardList,
+  Globe,
   Image,
+  Layout,
   LayoutDashboard,
   PlayCircle,
   Settings2,
@@ -20,6 +22,11 @@ const navItems = [
   { to: '/ghl-status', label: 'GHL Status', icon: Settings2 },
   { to: '/media', label: 'Media Library', icon: Image },
   { to: '/approval', label: 'Approval Queue', icon: CalendarClock },
+];
+
+const phase4NavItems = [
+  { to: '/templates', label: 'Templates', icon: Layout },
+  { to: '/sites', label: 'Generated Sites', icon: Globe },
 ];
 
 function navClass(isActive: boolean) {
@@ -61,6 +68,24 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
               key={item.to}
               to={item.to}
               end={item.end}
+              onClick={onNavigate}
+              className={({ isActive }) => navClass(isActive)}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {item.label}
+            </NavLink>
+          );
+        })}
+
+        <p className="mb-2 mt-5 px-3 text-xs font-medium uppercase tracking-wide text-slate-500">
+          Website Generation
+        </p>
+        {phase4NavItems.map((item) => {
+          const Icon = item.icon;
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to}
               onClick={onNavigate}
               className={({ isActive }) => navClass(isActive)}
             >
