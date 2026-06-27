@@ -1,18 +1,18 @@
 import {
   CalendarClock,
   ClipboardList,
+  Database,
   Globe,
   Image,
   Layout,
   LayoutDashboard,
+  Mail,
   PlayCircle,
   Settings2,
   SlidersHorizontal,
 } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '../lib/utils';
-import { useLocations } from '../contexts/LocationsContext';
-import { Skeleton } from './ui/skeleton';
 
 const navItems = [
   { to: '/', label: 'Overview', end: true, icon: LayoutDashboard },
@@ -27,6 +27,8 @@ const navItems = [
 const phase4NavItems = [
   { to: '/templates', label: 'Templates', icon: Layout },
   { to: '/sites', label: 'Generated Sites', icon: Globe },
+  { to: '/industry-schemas', label: 'Industry Schemas', icon: Database },
+  { to: '/contacts', label: 'Contact Submissions', icon: Mail },
 ];
 
 function navClass(isActive: boolean) {
@@ -44,8 +46,6 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
-  const { locations, loading } = useLocations();
-
   return (
     <div className={cn('flex h-full flex-col', className)}>
       <div className="border-b border-slate-800 px-5 py-5">
@@ -96,7 +96,7 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
         })}
       </nav>
 
-      <div className="border-t border-slate-800 px-4 py-4">
+      {/* <div className="border-t border-slate-800 px-4 py-4">
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">
           Locations
         </p>
@@ -119,7 +119,7 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
             ))
           )}
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }

@@ -2,9 +2,11 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { LocationsProvider } from './contexts/LocationsContext';
 import { Layout } from './components/Layout';
 import { ApprovalQueuePage } from './pages/ApprovalQueuePage';
+import { ContactSubmissionsPage } from './pages/ContactSubmissionsPage';
 import { DailyJobPage } from './pages/DailyJobPage';
 import { GeneratedSitesPage } from './pages/GeneratedSitesPage';
 import { GhlStatusPage } from './pages/GhlStatusPage';
+import { IndustrySchemasPage } from './pages/IndustrySchemasPage';
 import { MediaLibraryPage } from './pages/MediaLibraryPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { PostsPage } from './pages/PostsPage';
@@ -26,6 +28,8 @@ export default function App() {
             <Route path="settings" element={<SettingsPage />} />
             <Route path="templates" element={<TemplatesPage />} />
             <Route path="sites" element={<GeneratedSitesPage />} />
+            <Route path="industry-schemas" element={<IndustrySchemasPage />} />
+            <Route path="contacts" element={<ContactSubmissionsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

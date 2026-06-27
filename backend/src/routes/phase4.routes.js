@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import nodemailer from 'nodemailer';
 import { env } from '../config/env.js';
 import prisma from '../database/client.js';
 import { generateLocationPages } from '../services/locationPage.service.js';
@@ -9,7 +10,12 @@ import {
   getGeneratedSiteBySlug,
   listGeneratedSites,
 } from '../services/siteGenerator.service.js';
-import { getSchemaForIndustry } from '../services/industrySchema.service.js';
+import {
+  createIndustrySchema,
+  getAllIndustrySchemas,
+  getSchemaForIndustry,
+  updateIndustrySchema,
+} from '../services/industrySchema.service.js';
 import {
   createTemplate,
   deleteTemplate,
@@ -24,6 +30,174 @@ const router = Router();
 const HERO_STYLES = new Set(['dark', 'light']);
 const FONT_STYLES = new Set(['modern', 'classic', 'friendly']);
 const SITE_STATUSES = new Set(['PENDING', 'ACTIVE', 'INACTIVE']);
+const GHL_VERSION = '2021-07-28';
+
+function createSmtpTransporter() {
+  return nodemailer.createTransport({
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    secure: env.SMTP_PORT === 465,
+    auth: {
+      user: env.SMTP_USER,
+      pass: env.SMTP_PASS,
+    },
+  });
+}
+
+async function sendContactNotificationEmail(site, submission) {
+  const subject = `New contact from ${site.businessName} website`;
+  const submittedAt = submission.createdAt.toISOString();
+  const text = [
+    'A new contact form submission was received.',
+    '',
+    `Name: ${submission.name}`,
+    `Email: ${submission.email}`,
+    `Phone: ${submission.phone ?? '—'}`,
+    `Message: ${submission.message}`,
+    `Site slug: ${site.slug}`,
+    `Submitted at: ${submittedAt}`,
+  ].join('\n');
+
+  if (env.MOCK_MODE) {
+    console.info(
+      JSON.stringify({
+        event: 'contact_notification_mock',
+        siteSlug: site.slug,
+        submissionId: submission.id,
+        subject,
+      }),
+    );
+    return { mock: true };
+  }
+
+  if (
+    !env.SMTP_HOST ||
+    !env.SMTP_USER ||
+    !env.SMTP_PASS ||
+    !env.ALERT_EMAIL_FROM ||
+    !env.ALERT_EMAIL_TO
+  ) {
+    console.warn(
+      JSON.stringify({
+        event: 'contact_notification_skipped',
+        reason: 'SMTP or alert email env not configured',
+        siteSlug: site.slug,
+        submissionId: submission.id,
+      }),
+    );
+    return { skipped: true };
+  }
+
+  const transporter = createSmtpTransporter();
+  const info = await transporter.sendMail({
+    from: env.ALERT_EMAIL_FROM,
+    to: env.ALERT_EMAIL_TO,
+    subject,
+    text,
+  });
+
+  console.info(
+    JSON.stringify({
+      event: 'contact_notification_sent',
+      siteSlug: site.slug,
+      submissionId: submission.id,
+      messageId: info.messageId,
+    }),
+  );
+
+  return info;
+}
+
+async function resolveGhlLocationForSite(site) {
+  const locations = await prisma.location.findMany({
+    where: {
+      status: 'ACTIVE',
+      ghlApiKey: { not: null },
+    },
+    include: {
+      business: true,
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const withKey = locations.filter((location) => location.ghlApiKey?.trim());
+  if (withKey.length === 0) {
+    return null;
+  }
+
+  const normalizedIndustry = String(site.industry ?? '')
+    .trim()
+    .toLowerCase();
+
+  const industryMatch = withKey.find((location) => {
+    const businessName = String(location.business?.name ?? '').toLowerCase();
+    return normalizedIndustry && businessName.includes(normalizedIndustry);
+  });
+
+  return industryMatch ?? withKey[0];
+}
+
+async function createGhlContactFromSubmission(site, submission) {
+  const location = await resolveGhlLocationForSite(site);
+  if (!location?.ghlApiKey?.trim()) {
+    console.warn(
+      JSON.stringify({
+        event: 'ghl_contact_skipped',
+        reason: 'No active location with ghlApiKey found',
+        siteSlug: site.slug,
+      }),
+    );
+    return { skipped: true };
+  }
+
+  if (env.MOCK_MODE) {
+    console.info(
+      JSON.stringify({
+        event: 'ghl_contact_mock',
+        siteSlug: site.slug,
+        ghlLocationId: location.ghlLocationId,
+        email: submission.email,
+      }),
+    );
+    return { mock: true };
+  }
+
+  try {
+    const response = await fetch('https://services.leadconnectorhq.com/contacts/', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${location.ghlApiKey.trim()}`,
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Version: GHL_VERSION,
+      },
+      body: JSON.stringify({
+        locationId: location.ghlLocationId,
+        firstName: submission.name,
+        email: submission.email,
+        phone: submission.phone ?? undefined,
+        source: 'Website Contact Form',
+        tags: ['website-lead', site.industry],
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new Error(`GHL contacts API failed: ${response.status} ${body}`);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: 'ghl_contact_failed',
+        siteSlug: site.slug,
+        error: error instanceof Error ? error.message : String(error),
+      }),
+    );
+    return { success: false };
+  }
+}
 
 function slugifySite(...parts) {
   return parts
@@ -498,6 +672,114 @@ async function buildSiteImages(site) {
 }
 
 router.get(
+  '/contacts',
+  asyncHandler(async (req, res) => {
+    const contacts = await prisma.contactSubmission.findMany({
+      include: {
+        site: {
+          select: {
+            businessName: true,
+            slug: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.json({
+      success: true,
+      data: { contacts, total: contacts.length },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+router.get(
+  '/industry-schemas',
+  asyncHandler(async (req, res) => {
+    const schemas = await getAllIndustrySchemas();
+    return res.json({
+      success: true,
+      data: { schemas },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+router.post(
+  '/industry-schemas',
+  asyncHandler(async (req, res) => {
+    const schema = await createIndustrySchema(req.body ?? {});
+    return res.status(201).json({
+      success: true,
+      data: { schema },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+router.put(
+  '/industry-schemas/:id',
+  asyncHandler(async (req, res) => {
+    const schema = await updateIndustrySchema(req.params.id, req.body ?? {});
+    return res.json({
+      success: true,
+      data: { schema },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+router.delete(
+  '/industry-schemas/:id',
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.industrySchema.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!existing) {
+      throw new AppError('Industry schema not found.', 404, { code: 'INDUSTRY_SCHEMA_NOT_FOUND' });
+    }
+
+    const sitesUsingIndustry = await prisma.generatedSite.count({
+      where: {
+        industry: { equals: existing.industry, mode: 'insensitive' },
+      },
+    });
+
+    if (sitesUsingIndustry > 0) {
+      throw new AppError(
+        'Cannot delete industry schema while sites are using this industry.',
+        409,
+        { code: 'INDUSTRY_SCHEMA_IN_USE' },
+      );
+    }
+
+    const schema = await prisma.industrySchema.delete({
+      where: { id: req.params.id },
+    });
+
+    return res.json({
+      success: true,
+      data: { schema },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+router.get(
+  '/industry-schemas/:industry',
+  asyncHandler(async (req, res) => {
+    const schema = await getSchemaForIndustry(req.params.industry);
+    return res.json({
+      success: true,
+      data: { schema },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+router.get(
   '/templates',
   asyncHandler(async (req, res) => {
     const templates = await getAllTemplates();
@@ -552,6 +834,83 @@ router.get(
     return res.json({
       success: true,
       data: { sites: sites.map(serializeSiteWithTheme) },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+router.get(
+  '/sites/:slug/contacts',
+  asyncHandler(async (req, res) => {
+    const site = await getGeneratedSiteBySlug(req.params.slug);
+    const contacts = await prisma.contactSubmission.findMany({
+      where: { siteId: site.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.json({
+      success: true,
+      data: { contacts, total: contacts.length },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+router.post(
+  '/sites/:slug/contact',
+  asyncHandler(async (req, res) => {
+    const site = await prisma.generatedSite.findUnique({
+      where: { slug: req.params.slug },
+    });
+
+    if (!site) {
+      throw new AppError('Generated site not found.', 404, { code: 'SITE_NOT_FOUND' });
+    }
+
+    const name = String(req.body?.name ?? '').trim();
+    const email = String(req.body?.email ?? '').trim();
+    const phone =
+      req.body?.phone != null && req.body.phone !== '' ? String(req.body.phone).trim() : null;
+    const message = String(req.body?.message ?? '').trim();
+
+    if (!name) {
+      throw new AppError('Field `name` is required.', 400, { code: 'INVALID_BODY' });
+    }
+    if (!email) {
+      throw new AppError('Field `email` is required.', 400, { code: 'INVALID_BODY' });
+    }
+    if (!message) {
+      throw new AppError('Field `message` is required.', 400, { code: 'INVALID_BODY' });
+    }
+
+    const submission = await prisma.contactSubmission.create({
+      data: {
+        siteId: site.id,
+        name,
+        email,
+        phone,
+        message,
+      },
+    });
+
+    try {
+      await sendContactNotificationEmail(site, submission);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: 'contact_notification_failed',
+          siteSlug: site.slug,
+          submissionId: submission.id,
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
+    }
+
+    await createGhlContactFromSubmission(site, submission);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Message sent successfully',
       requestId: req.requestId,
     });
   }),

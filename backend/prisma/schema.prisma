@@ -190,6 +190,7 @@ model GeneratedSite {
   websiteUrl      String?
   logoUrl         String?
   locationPages   LocationPage[]
+  contactSubmissions ContactSubmission[]
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 }
@@ -206,4 +207,18 @@ model LocationPage {
   createdAt DateTime      @default(now())
 
   @@unique([siteId, slug])
+}
+
+model ContactSubmission {
+  id        String        @id @default(cuid())
+  siteId    String
+  site      GeneratedSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  name      String
+  email     String
+  phone     String?
+  message   String
+  createdAt DateTime      @default(now())
+
+  @@index([siteId])
+  @@index([createdAt])
 }

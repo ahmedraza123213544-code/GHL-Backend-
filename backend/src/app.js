@@ -16,25 +16,20 @@ import phase4Routes from './routes/phase4.routes.js';
 export function createApp() {
   const app = express();
 
+  const corsOptions = {
+    origin: [
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://site.peakwa.com',
+      process.env.DASHBOARD_URL,
+      process.env.SITE_URL,
+    ].filter(Boolean),
+    credentials: true,
+  };
+
   app.disable('x-powered-by');
   app.use(helmet());
-  app.use(
-    cors({
-      origin(origin, callback) {
-        if (!origin) {
-          callback(null, true);
-          return;
-        }
-        const normalized = origin.replace(/\/$/, '');
-        if (env.corsOrigins.includes(normalized)) {
-          callback(null, true);
-          return;
-        }
-        callback(null, false);
-      },
-      credentials: true,
-    }),
-  );
+  app.use(cors(corsOptions));
   app.use(express.json({ limit: '1mb' }));
   app.use(requestLogger);
 

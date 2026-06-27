@@ -55,7 +55,7 @@ export default async function LocationPage({ params }: PageProps) {
 
       <SectionWrapper background={theme.secondaryColor}>
         <div className="mx-auto max-w-2xl">
-          <ContactForm site={site} heading={`Contact us in ${page.city}`} />
+          <ContactForm site={site} slug={slug} heading={`Contact us in ${page.city}`} />
         </div>
       </SectionWrapper>
     </>

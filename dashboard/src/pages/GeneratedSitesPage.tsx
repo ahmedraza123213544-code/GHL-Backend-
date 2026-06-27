@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, MapPin, Minus, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { Loader2, ExternalLink, MapPin, Minus, Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import {
   addLocationPages,
   deletePhase4Site,
   fetchPhase4Site,
   fetchPhase4Sites,
+  fetchSiteContacts,
   regeneratePhase4Site,
   updatePhase4Site,
+  type ContactSubmission,
   type Phase4GeneratedSite,
   type Phase4LocationInput,
   type Phase4LocationPage,
@@ -42,8 +44,17 @@ import { CardListSkeleton, TableSkeleton } from '../components/ui/skeleton';
 import { cn } from '../lib/utils';
 import { formatDate } from '../utils/format';
 
-type SiteTab = 'home' | 'about' | 'services' | 'contact' | 'blog' | 'locations';
+type SiteTab = 'home' | 'about' | 'services' | 'contact' | 'blog' | 'locations' | 'contacts';
 type EditTab = 'business' | 'colors' | 'regenerate' | 'status';
+
+const SITE_BASE_URL = String(import.meta.env.VITE_SITE_BASE_URL || 'http://localhost:3000').replace(
+  /\/$/,
+  '',
+);
+
+function openSitePreview(slug: string) {
+  window.open(`${SITE_BASE_URL}/${slug}`, '_blank', 'noopener,noreferrer');
+}
 
 type SiteExtraFields = {
   address?: string | null;
@@ -304,6 +315,8 @@ export function GeneratedSitesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [selectedSite, setSelectedSite] = useState<SiteWithTheme | null>(null);
   const [activeTab, setActiveTab] = useState<SiteTab>('home');
+  const [siteContacts, setSiteContacts] = useState<ContactSubmission[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
   const [locationRows, setLocationRows] = useState<Phase4LocationInput[]>([emptyLocationRow()]);
   const [addingLocations, setAddingLocations] = useState(false);
@@ -360,10 +373,41 @@ export function GeneratedSitesPage() {
     void loadSites();
   }, [loadSites]);
 
+  useEffect(() => {
+    if (!detailOpen || activeTab !== 'contacts' || !selectedSite) {
+      return;
+    }
+
+    let cancelled = false;
+    setContactsLoading(true);
+
+    void fetchSiteContacts(selectedSite.slug)
+      .then((data) => {
+        if (!cancelled) {
+          setSiteContacts(data.contacts);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSiteContacts([]);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setContactsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [detailOpen, activeTab, selectedSite?.slug]);
+
   async function openDetails(site: Phase4GeneratedSite) {
     setDetailOpen(true);
     setDetailLoading(true);
     setActiveTab('home');
+    setSiteContacts([]);
     setError(null);
     try {
       const full = await fetchPhase4Site(site.slug);
@@ -570,6 +614,7 @@ export function GeneratedSitesPage() {
           { id: 'contact', label: 'Contact', content: selectedSite.contactContent },
           { id: 'blog', label: 'Blog', content: selectedSite.blogContent },
           { id: 'locations', label: 'Location Pages', content: null },
+          { id: 'contacts', label: 'Contacts', content: null },
         ]
       : [];
 
@@ -643,6 +688,15 @@ export function GeneratedSitesPage() {
                     type="button"
                     variant="outline"
                     className="flex-1"
+                    onClick={() => openSitePreview(site.slug)}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Preview
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
                     onClick={() => void openEdit(site)}
                   >
                     <Pencil className="h-4 w-4" />
@@ -662,33 +716,34 @@ export function GeneratedSitesPage() {
             ))}
           </div>
 
-          {/* Desktop table */}
-          <div className="hidden overflow-hidden rounded-xl border border-slate-800 lg:block">
-            <table className="min-w-full divide-y divide-slate-800">
+          {/* Desktop table — horizontal scroll when columns exceed viewport */}
+          <div className="hidden lg:block">
+            <div className="overflow-x-auto rounded-xl border border-slate-800">
+              <table className="min-w-[1380px] w-full divide-y divide-slate-800">
               <thead className="bg-slate-900/80">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
                     Business Name
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
                     Industry
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
                     City
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
                     Slug
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
                     Template
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
                     Created
                   </th>
-                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400">
+                  <th className="whitespace-nowrap px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400">
                     Actions
                   </th>
                 </tr>
@@ -696,28 +751,31 @@ export function GeneratedSitesPage() {
               <tbody className="divide-y divide-slate-800 bg-slate-900/40">
                 {sites.map((site) => (
                   <tr key={site.id} className="hover:bg-slate-800/30">
-                    <td className="px-4 py-3 text-sm font-medium text-slate-200">
+                    <td className="whitespace-nowrap px-4 py-3 text-sm font-medium text-slate-200">
                       {site.businessName}
                     </td>
-                    <td className="px-4 py-3 text-sm capitalize text-slate-400">
+                    <td className="whitespace-nowrap px-4 py-3 text-sm capitalize text-slate-400">
                       {site.industry}
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-300">
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-300">
                       {site.city}, {site.state}
                     </td>
-                    <td className="max-w-[140px] truncate px-4 py-3 font-mono text-xs text-slate-400">
+                    <td
+                      className="max-w-[200px] truncate whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-300"
+                      title={site.slug}
+                    >
                       {site.slug}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="whitespace-nowrap px-4 py-3">
                       <SiteStatusBadge status={site.status} />
                     </td>
-                    <td className="px-4 py-3 text-sm text-slate-300">
+                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-300">
                       {site.template?.name ?? '—'}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-400">
                       {formatDate(site.createdAt)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
                         <Button
                           type="button"
@@ -726,6 +784,16 @@ export function GeneratedSitesPage() {
                           onClick={() => void openDetails(site)}
                         >
                           View Details
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openSitePreview(site.slug)}
+                          title="Preview site"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Preview
                         </Button>
                         <Button
                           type="button"
@@ -752,6 +820,7 @@ export function GeneratedSitesPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         </>
       )}
@@ -875,6 +944,50 @@ export function GeneratedSitesPage() {
                             </span>
                           </div>
                           <PageContentPanel content={page.content} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === 'contacts' ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-400">
+                    {contactsLoading
+                      ? 'Loading submissions…'
+                      : `${siteContacts.length} contact submission${siteContacts.length === 1 ? '' : 's'}`}
+                  </p>
+
+                  {contactsLoading ? (
+                    <div className="flex items-center justify-center py-12 text-slate-400">
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Loading contacts…
+                    </div>
+                  ) : siteContacts.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-slate-500">
+                      No contact submissions yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {siteContacts.map((contact) => (
+                        <div
+                          key={contact.id}
+                          className="rounded-lg border border-slate-800 bg-slate-950/40 p-4"
+                        >
+                          <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="font-medium text-white">{contact.name}</p>
+                              <p className="text-sm text-slate-400">{contact.email}</p>
+                              {contact.phone ? (
+                                <p className="text-sm text-slate-500">{contact.phone}</p>
+                              ) : null}
+                            </div>
+                            <span className="text-xs text-slate-500">
+                              {formatDate(contact.createdAt)}
+                            </span>
+                          </div>
+                          <p className="text-sm whitespace-pre-wrap text-slate-300">
+                            {contact.message}
+                          </p>
                         </div>
                       ))}
                     </div>
@@ -1362,9 +1475,6 @@ export function GeneratedSitesPage() {
       >
         <AlertDialogContent
           onEscapeKeyDown={(e) => {
-            if (deleting) e.preventDefault();
-          }}
-          onPointerDownOutside={(e) => {
             if (deleting) e.preventDefault();
           }}
         >

@@ -395,3 +395,101 @@ export async function regeneratePhase4Site(id: string): Promise<Phase4GeneratedS
   );
   return data.data.site;
 }
+
+export interface IndustrySchema {
+  id: string;
+  industry: string;
+  displayName: string;
+  systemPrompt: string;
+  homePageSchema: string;
+  aboutPageSchema: string;
+  servicesPageSchema: string;
+  contactPageSchema: string;
+  locationPageSchema: string;
+  blogPageSchema: string;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IndustrySchemaPayload {
+  industry: string;
+  displayName: string;
+  systemPrompt: string;
+  homePageSchema: string;
+  aboutPageSchema: string;
+  servicesPageSchema: string;
+  contactPageSchema: string;
+  locationPageSchema: string;
+  blogPageSchema: string;
+  isDefault?: boolean;
+}
+
+export interface ContactSubmission {
+  id: string;
+  siteId: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  message: string;
+  createdAt: string;
+  site?: {
+    businessName: string;
+    slug: string;
+  };
+}
+
+export async function fetchIndustrySchemas(): Promise<IndustrySchema[]> {
+  const { data } = await api.get<ApiResponse<{ schemas: IndustrySchema[] }>>(
+    '/phase4/industry-schemas',
+  );
+  return data.data.schemas;
+}
+
+export async function createIndustrySchema(
+  payload: IndustrySchemaPayload,
+): Promise<IndustrySchema> {
+  const { data } = await api.post<ApiResponse<{ schema: IndustrySchema }>>(
+    '/phase4/industry-schemas',
+    payload,
+  );
+  return data.data.schema;
+}
+
+export async function updateIndustrySchema(
+  id: string,
+  payload: Partial<IndustrySchemaPayload>,
+): Promise<IndustrySchema> {
+  const { data } = await api.put<ApiResponse<{ schema: IndustrySchema }>>(
+    `/phase4/industry-schemas/${id}`,
+    payload,
+  );
+  return data.data.schema;
+}
+
+export async function deleteIndustrySchema(id: string): Promise<IndustrySchema> {
+  const { data } = await api.delete<ApiResponse<{ schema: IndustrySchema }>>(
+    `/phase4/industry-schemas/${id}`,
+  );
+  return data.data.schema;
+}
+
+export async function fetchAllContacts(): Promise<{
+  contacts: ContactSubmission[];
+  total: number;
+}> {
+  const { data } = await api.get<
+    ApiResponse<{ contacts: ContactSubmission[]; total: number }>
+  >('/phase4/contacts');
+  return data.data;
+}
+
+export async function fetchSiteContacts(slug: string): Promise<{
+  contacts: ContactSubmission[];
+  total: number;
+}> {
+  const { data } = await api.get<
+    ApiResponse<{ contacts: ContactSubmission[]; total: number }>
+  >(`/phase4/sites/${encodeURIComponent(slug)}/contacts`);
+  return data.data;
+}

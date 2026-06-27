@@ -34,7 +34,7 @@ export default async function ContactPage({ params }: PageProps) {
       <SectionWrapper background="#fff" className="py-20">
         <div className="grid gap-12 lg:grid-cols-5">
           <div className="lg:col-span-3">
-            <ContactForm site={site} heading={content.formHeading || 'Get in touch'} />
+            <ContactForm site={site} slug={slug} heading={content.formHeading || 'Get in touch'} />
           </div>
           <aside
             className="rounded-3xl p-8 shadow-xl lg:col-span-2"
