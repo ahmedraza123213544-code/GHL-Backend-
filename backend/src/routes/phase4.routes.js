@@ -694,6 +694,27 @@ router.get(
   }),
 );
 
+router.delete(
+  '/contacts/:id',
+  asyncHandler(async (req, res) => {
+    const existing = await prisma.contactSubmission.findUnique({
+      where: { id: req.params.id },
+    });
+
+    if (!existing) {
+      throw new AppError('Contact submission not found.', 404, { code: 'CONTACT_NOT_FOUND' });
+    }
+
+    await prisma.contactSubmission.delete({ where: { id: req.params.id } });
+
+    return res.json({
+      success: true,
+      data: { message: 'Contact submission deleted.', id: req.params.id },
+      requestId: req.requestId,
+    });
+  }),
+);
+
 router.get(
   '/industry-schemas',
   asyncHandler(async (req, res) => {

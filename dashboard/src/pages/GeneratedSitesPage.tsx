@@ -637,7 +637,7 @@ export function GeneratedSitesPage() {
         </>
       ) : sites.length === 0 ? (
         <div className="rounded-xl border border-slate-800 bg-slate-900/40 py-16 text-center text-sm text-slate-500">
-          No generated sites yet. Sites are created via the Phase 4 webhook.
+          No generated sites yet. Sites are created via the site generation webhook.
         </div>
       ) : (
         <>

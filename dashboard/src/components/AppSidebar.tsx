@@ -55,7 +55,7 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
           </div>
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold text-white">GBP Automation</p>
-            <p className="text-xs text-slate-500">Phase 1 Dashboard</p>
+            <p className="text-xs text-slate-500">Automation Dashboard</p>
           </div>
         </div>
       </div>
@@ -78,7 +78,7 @@ export function AppSidebar({ onNavigate, className }: AppSidebarProps) {
         })}
 
         <p className="mb-2 mt-5 px-3 text-xs font-medium uppercase tracking-wide text-slate-500">
-          Website Generation
+          Website Builder
         </p>
         {phase4NavItems.map((item) => {
           const Icon = item.icon;

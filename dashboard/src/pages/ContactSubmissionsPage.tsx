@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Mail, Search } from 'lucide-react';
-import { fetchAllContacts, type ContactSubmission } from '../api/endpoints';
-import { ErrorBanner, PageHeader } from '../components/ui';
+import { Mail, Search, Trash2 } from 'lucide-react';
+import { deleteContactSubmission, fetchAllContacts, type ContactSubmission } from '../api/endpoints';
+import { ErrorBanner, PageHeader, SuccessBanner } from '../components/ui';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../components/ui/alert-dialog';
+import { Button } from '../components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -25,8 +36,11 @@ export function ContactSubmissionsPage() {
   const [contacts, setContacts] = useState<ContactSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<ContactSubmission | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ContactSubmission | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const loadContacts = useCallback(async () => {
     setLoading(true);
@@ -53,6 +67,28 @@ export function ContactSubmissionsPage() {
     );
   }, [contacts, search]);
 
+  async function handleDelete() {
+    if (!deleteTarget || deleting) return;
+
+    setDeleting(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      await deleteContactSubmission(deleteTarget.id);
+      setContacts((prev) => prev.filter((c) => c.id !== deleteTarget.id));
+      if (selected?.id === deleteTarget.id) {
+        setSelected(null);
+      }
+      setSuccess(`Submission from ${deleteTarget.name} deleted.`);
+      setDeleteTarget(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to delete submission');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
@@ -61,6 +97,7 @@ export function ContactSubmissionsPage() {
       />
 
       {error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
+      {success ? <SuccessBanner message={success} /> : null}
 
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative w-full sm:max-w-sm">
@@ -96,81 +133,130 @@ export function ContactSubmissionsPage() {
         <>
           <div className="space-y-4 lg:hidden">
             {filtered.map((contact) => (
-              <button
+              <div
                 key={contact.id}
-                type="button"
-                onClick={() => setSelected(contact)}
-                className="w-full rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-left transition-colors hover:bg-slate-800/40"
+                className="rounded-xl border border-slate-800 bg-slate-900/60 p-4"
               >
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-medium text-white">{contact.name}</p>
-                    <p className="text-sm text-slate-400">{contact.email}</p>
+                <button
+                  type="button"
+                  onClick={() => setSelected(contact)}
+                  className="w-full text-left"
+                >
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium text-white">{contact.name}</p>
+                      <p className="text-sm text-slate-400">{contact.email}</p>
+                    </div>
+                    <span className="shrink-0 text-xs text-slate-500">
+                      {formatDate(contact.createdAt)}
+                    </span>
                   </div>
-                  <span className="shrink-0 text-xs text-slate-500">
-                    {formatDate(contact.createdAt)}
-                  </span>
+                  <p className="mb-1 text-sm text-emerald-400/90">
+                    {contact.site?.businessName ?? 'Unknown site'}
+                  </p>
+                  <p className="line-clamp-2 text-sm text-slate-400">
+                    {messagePreview(contact.message, 120)}
+                  </p>
+                </button>
+                <div className="mt-3 flex justify-end border-t border-slate-800 pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                    onClick={() => setDeleteTarget(contact)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </Button>
                 </div>
-                <p className="mb-1 text-sm text-emerald-400/90">
-                  {contact.site?.businessName ?? 'Unknown site'}
-                </p>
-                <p className="line-clamp-2 text-sm text-slate-400">
-                  {messagePreview(contact.message, 120)}
-                </p>
-              </button>
+              </div>
             ))}
           </div>
 
           <div className="hidden lg:block">
             <div className="overflow-x-auto rounded-xl border border-slate-800">
-              <table className="min-w-[960px] w-full divide-y divide-slate-800">
-              <thead className="bg-slate-900/80">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
-                    Name
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
-                    Email
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
-                    Phone
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
-                    Site
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
-                    Message
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
-                    Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800 bg-slate-900/40">
-                {filtered.map((contact) => (
-                  <tr
-                    key={contact.id}
-                    onClick={() => setSelected(contact)}
-                    className="cursor-pointer hover:bg-slate-800/30"
-                  >
-                    <td className="px-4 py-3 text-sm font-medium text-slate-200">
-                      {contact.name}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-300">{contact.email}</td>
-                    <td className="px-4 py-3 text-sm text-slate-400">{contact.phone ?? '—'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-300">
-                      {contact.site?.businessName ?? '—'}
-                    </td>
-                    <td className="max-w-[200px] truncate px-4 py-3 text-sm text-slate-400">
-                      {messagePreview(contact.message)}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-sm text-slate-400">
-                      {formatDate(contact.createdAt)}
-                    </td>
+              <table className="min-w-[1040px] w-full divide-y divide-slate-800">
+                <thead className="bg-slate-900/80">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Name
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Email
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Phone
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Site
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Message
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Date
+                    </th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400">
+                      Actions
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-800 bg-slate-900/40">
+                  {filtered.map((contact) => (
+                    <tr key={contact.id} className="hover:bg-slate-800/30">
+                      <td
+                        className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-200"
+                        onClick={() => setSelected(contact)}
+                      >
+                        {contact.name}
+                      </td>
+                      <td
+                        className="cursor-pointer px-4 py-3 text-sm text-slate-300"
+                        onClick={() => setSelected(contact)}
+                      >
+                        {contact.email}
+                      </td>
+                      <td
+                        className="cursor-pointer px-4 py-3 text-sm text-slate-400"
+                        onClick={() => setSelected(contact)}
+                      >
+                        {contact.phone ?? '—'}
+                      </td>
+                      <td
+                        className="cursor-pointer px-4 py-3 text-sm text-slate-300"
+                        onClick={() => setSelected(contact)}
+                      >
+                        {contact.site?.businessName ?? '—'}
+                      </td>
+                      <td
+                        className="max-w-[200px] cursor-pointer truncate px-4 py-3 text-sm text-slate-400"
+                        onClick={() => setSelected(contact)}
+                      >
+                        {messagePreview(contact.message)}
+                      </td>
+                      <td
+                        className="cursor-pointer whitespace-nowrap px-4 py-3 text-sm text-slate-400"
+                        onClick={() => setSelected(contact)}
+                      >
+                        {formatDate(contact.createdAt)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                          onClick={() => setDeleteTarget(contact)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </>
@@ -215,10 +301,59 @@ export function ContactSubmissionsPage() {
                   {selected.message}
                 </div>
               </div>
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                  onClick={() => {
+                    setDeleteTarget(selected);
+                    setSelected(null);
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </Button>
+              </div>
             </div>
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => {
+          if (!open && !deleting) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent
+          onEscapeKeyDown={(e) => {
+            if (deleting) e.preventDefault();
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete contact submission?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the submission from{' '}
+              {deleteTarget?.name ?? 'this contact'}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="danger"
+              loading={deleting}
+              disabled={deleting}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDelete();
+              }}
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

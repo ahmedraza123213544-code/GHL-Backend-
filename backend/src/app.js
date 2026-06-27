@@ -20,7 +20,9 @@ export function createApp() {
     origin: [
       'http://localhost:5173',
       'http://localhost:3000',
-      'https://site.peakwa.com',
+      // Production: 'https://site.peakwa.com',
+      'https://ghl-backend-1qqr.vercel.app',
+      'https://ghl-backend-eopr.vercel.app',
       process.env.DASHBOARD_URL,
       process.env.SITE_URL,
     ].filter(Boolean),

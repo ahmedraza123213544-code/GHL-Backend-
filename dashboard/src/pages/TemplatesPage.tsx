@@ -190,7 +190,7 @@ export function TemplatesPage() {
     <div>
       <PageHeader
         title="Templates"
-        description="Manage website templates for Phase 4 site generation."
+        description="Manage website templates for AI-powered site generation."
         action={
           <Button type="button" onClick={openCreate} className="w-full sm:w-auto">
             <Plus className="h-4 w-4" />

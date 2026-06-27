@@ -493,3 +493,7 @@ export async function fetchSiteContacts(slug: string): Promise<{
   >(`/phase4/sites/${encodeURIComponent(slug)}/contacts`);
   return data.data;
 }
+
+export async function deleteContactSubmission(id: string): Promise<void> {
+  await api.delete<ApiResponse<{ message: string; id: string }>>(`/phase4/contacts/${id}`);
+}
