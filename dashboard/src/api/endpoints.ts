@@ -448,6 +448,34 @@ export async function regeneratePhase4Site(id: string): Promise<Phase4GeneratedS
   return data.data.site;
 }
 
+export interface Phase4ServicePayload {
+  title: string;
+  shortDescription: string;
+  fullDescription: string;
+  icon: string;
+}
+
+export async function addPhase4Service(
+  id: string,
+  data: Phase4ServicePayload,
+): Promise<Phase4GeneratedSite> {
+  const { data: response } = await api.post<ApiResponse<{ site: Phase4GeneratedSite }>>(
+    `/phase4/sites/${id}/services`,
+    data,
+  );
+  return response.data.site;
+}
+
+export async function deletePhase4Service(
+  id: string,
+  serviceIndex: number,
+): Promise<Phase4GeneratedSite> {
+  const { data } = await api.delete<ApiResponse<{ site: Phase4GeneratedSite }>>(
+    `/phase4/sites/${id}/services/${serviceIndex}`,
+  );
+  return data.data.site;
+}
+
 export interface IndustrySchema {
   id: string;
   industry: string;

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import nodemailer from 'nodemailer';
 import { env } from '../config/env.js';
 import prisma from '../database/client.js';
@@ -27,6 +28,53 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { AppError } from '../utils/AppError.js';
 
 const router = Router();
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const webhookRateLimiter = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: 3,
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMIT_EXCEEDED',
+      message:
+        'Too many site generation requests from this IP. Please try again tomorrow.',
+    },
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+function validateWebhookBody(body) {
+  if (!body || typeof body !== 'object') {
+    throw new AppError('Request body must be a JSON object.', 400, { code: 'INVALID_BODY' });
+  }
+
+  const businessName = String(body.businessName ?? '').trim();
+  const industry = String(body.industry ?? '').trim();
+  const email = String(body.email ?? '').trim();
+
+  if (!businessName || businessName.length < 2) {
+    throw new AppError('Field `businessName` is required and must be at least 2 characters.', 400, {
+      code: 'INVALID_BODY',
+    });
+  }
+
+  if (!industry) {
+    throw new AppError('Field `industry` is required.', 400, { code: 'INVALID_BODY' });
+  }
+
+  if (!email) {
+    throw new AppError('Field `email` is required.', 400, { code: 'INVALID_BODY' });
+  }
+
+  if (!EMAIL_REGEX.test(email)) {
+    throw new AppError('Field `email` must be a valid email address.', 400, {
+      code: 'INVALID_BODY',
+    });
+  }
+}
 
 const HERO_STYLES = new Set(['dark', 'light']);
 const FONT_STYLES = new Set(['modern', 'classic', 'friendly']);
@@ -971,8 +1019,35 @@ router.get(
 
 router.post(
   '/webhook',
+  webhookRateLimiter,
   asyncHandler(async (req, res) => {
-    const site = await generateSite(req.body ?? {});
+    const body = req.body ?? {};
+    validateWebhookBody(body);
+
+    const businessName = String(body.businessName ?? '').trim();
+    const city = String(body.city ?? '').trim();
+    const baseSlug = slugifySite(businessName, city);
+
+    if (baseSlug) {
+      const existing = await prisma.generatedSite.findUnique({
+        where: { slug: baseSlug },
+        include: { template: true },
+      });
+
+      if (existing) {
+        return res.json({
+          success: true,
+          data: {
+            slug: existing.slug,
+            site: serializeSiteWithTheme(existing),
+            existing: true,
+          },
+          requestId: req.requestId,
+        });
+      }
+    }
+
+    const site = await generateSite(body);
     return res.status(201).json({
       success: true,
       data: { slug: site.slug, site },
@@ -1048,6 +1123,118 @@ router.post(
     return res.status(201).json({
       success: true,
       data: { pages },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+function parseSiteJsonContent(value, label) {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    throw new AppError(`Invalid ${label} JSON on site.`, 500, { code: 'INVALID_SITE_CONTENT' });
+  }
+}
+
+router.post(
+  '/sites/:id/services',
+  asyncHandler(async (req, res) => {
+    const existing = await getGeneratedSiteById(req.params.id);
+
+    const title = String(req.body?.title ?? '').trim();
+    const shortDescription = String(req.body?.shortDescription ?? '').trim();
+    const fullDescription = String(req.body?.fullDescription ?? '').trim();
+    const icon = String(req.body?.icon ?? '').trim();
+
+    if (!title) {
+      throw new AppError('Field `title` is required.', 400, { code: 'INVALID_BODY' });
+    }
+    if (!shortDescription) {
+      throw new AppError('Field `shortDescription` is required.', 400, { code: 'INVALID_BODY' });
+    }
+    if (!fullDescription) {
+      throw new AppError('Field `fullDescription` is required.', 400, { code: 'INVALID_BODY' });
+    }
+    if (!icon) {
+      throw new AppError('Field `icon` is required.', 400, { code: 'INVALID_BODY' });
+    }
+
+    const servicesContent = parseSiteJsonContent(existing.servicesContent, 'servicesContent');
+    const homeContent = parseSiteJsonContent(existing.homeContent, 'homeContent');
+
+    const services = Array.isArray(servicesContent.services) ? [...servicesContent.services] : [];
+    const homeServices = Array.isArray(homeContent.services) ? [...homeContent.services] : [];
+
+    services.push({
+      title,
+      shortDescription,
+      fullDescription,
+      icon,
+    });
+    homeServices.push({
+      title,
+      description: shortDescription,
+      icon,
+    });
+
+    const site = await prisma.generatedSite.update({
+      where: { id: existing.id },
+      data: {
+        servicesContent: JSON.stringify({ ...servicesContent, services }),
+        homeContent: JSON.stringify({ ...homeContent, services: homeServices }),
+      },
+      include: { template: true },
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: { site: serializeSiteWithTheme(site) },
+      requestId: req.requestId,
+    });
+  }),
+);
+
+router.delete(
+  '/sites/:id/services/:serviceIndex',
+  asyncHandler(async (req, res) => {
+    const existing = await getGeneratedSiteById(req.params.id);
+    const serviceIndex = Number.parseInt(String(req.params.serviceIndex), 10);
+
+    if (!Number.isInteger(serviceIndex) || serviceIndex < 0) {
+      throw new AppError('Invalid service index.', 400, { code: 'INVALID_SERVICE_INDEX' });
+    }
+
+    const servicesContent = parseSiteJsonContent(existing.servicesContent, 'servicesContent');
+    const homeContent = parseSiteJsonContent(existing.homeContent, 'homeContent');
+
+    const services = Array.isArray(servicesContent.services) ? [...servicesContent.services] : [];
+    const homeServices = Array.isArray(homeContent.services) ? [...homeContent.services] : [];
+
+    if (serviceIndex >= services.length) {
+      throw new AppError('Service not found at the given index.', 404, {
+        code: 'SERVICE_NOT_FOUND',
+      });
+    }
+
+    services.splice(serviceIndex, 1);
+    if (serviceIndex < homeServices.length) {
+      homeServices.splice(serviceIndex, 1);
+    }
+
+    const site = await prisma.generatedSite.update({
+      where: { id: existing.id },
+      data: {
+        servicesContent: JSON.stringify({ ...servicesContent, services }),
+        homeContent: JSON.stringify({ ...homeContent, services: homeServices }),
+      },
+      include: { template: true },
+    });
+
+    return res.json({
+      success: true,
+      data: { site: serializeSiteWithTheme(site) },
       requestId: req.requestId,
     });
   }),

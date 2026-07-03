@@ -238,7 +238,12 @@ function buildPagePrompt(businessData, pageSchema, pageType, contextNote = '') {
     .filter(Boolean)
     .join(' ');
 
-  return `Generate ${pageType} page content for ${businessName}, a ${industry} business in ${city}, ${state}. ${details} Return ONLY valid JSON matching this exact structure: ${pageSchema}. Stay within all word and character limits. Content must be specific to this business and city.`;
+  const servicesInstruction =
+    pageType === 'services'
+      ? ' Generate 6 to 8 services that are highly relevant and specific to this exact business type. Each service must be genuinely offered by this type of business. Base services on industry keywords and common offerings in this field.'
+      : '';
+
+  return `Generate ${pageType} page content for ${businessName}, a ${industry} business in ${city}, ${state}. ${details}${servicesInstruction} Return ONLY valid JSON matching this exact structure: ${pageSchema}. Stay within all word and character limits. Content must be specific to this business and city.`;
 }
 
 async function callOpenAiForPage(systemPrompt, userPrompt) {

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Loader2, ExternalLink, MapPin, Minus, Pencil, Plus, RefreshCw, Search, Trash2 } from 'lucide-react';
 import {
   addLocationPages,
+  addPhase4Service,
+  deletePhase4Service,
   deletePhase4Site,
   fetchPhase4Site,
   fetchPhase4SitesPaginated,
@@ -12,6 +14,7 @@ import {
   type Phase4GeneratedSite,
   type Phase4LocationInput,
   type Phase4LocationPage,
+  type Phase4ServicePayload,
   type SiteStatus,
 } from '../api/endpoints';
 import { ErrorBanner, PageHeader, PaginatedPageLayout, Pagination, PaginationFooter, SuccessBanner } from '../components/ui';
@@ -258,6 +261,36 @@ function parseJsonContent(value: string | null | undefined): unknown {
   }
 }
 
+type ManagedService = {
+  title: string;
+  shortDescription: string;
+  fullDescription?: string;
+  icon: string;
+};
+
+function parseServicesFromContent(servicesContent: string | null | undefined): ManagedService[] {
+  const parsed = parseJsonContent(servicesContent);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return [];
+  const services = (parsed as { services?: unknown }).services;
+  if (!Array.isArray(services)) return [];
+  return services.map((item) => {
+    const service = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+    return {
+      title: String(service.title ?? ''),
+      shortDescription: String(service.shortDescription ?? service.description ?? ''),
+      fullDescription: service.fullDescription != null ? String(service.fullDescription) : undefined,
+      icon: String(service.icon ?? ''),
+    };
+  });
+}
+
+const emptyServiceForm: Phase4ServicePayload = {
+  title: '',
+  shortDescription: '',
+  fullDescription: '',
+  icon: '',
+};
+
 function ReadableValue({ value }: { value: unknown }) {
   if (value === null || value === undefined) {
     return <span className="text-slate-600">—</span>;
@@ -429,6 +462,11 @@ export function GeneratedSitesPage() {
   const [savingStatus, setSavingStatus] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [editSuccess, setEditSuccess] = useState<string | null>(null);
+  const [serviceDialogOpen, setServiceDialogOpen] = useState(false);
+  const [serviceForm, setServiceForm] = useState<Phase4ServicePayload>(emptyServiceForm);
+  const [savingService, setSavingService] = useState(false);
+  const [deleteServiceIndex, setDeleteServiceIndex] = useState<number | null>(null);
+  const [deletingService, setDeletingService] = useState(false);
 
   function populateEditForms(siteData: SiteWithTheme) {
     setEditData({
@@ -732,6 +770,73 @@ export function GeneratedSitesPage() {
     }
   }
 
+  async function refreshSelectedSite(updated?: Phase4GeneratedSite) {
+    if (!selectedSite) return;
+    if (updated) {
+      setSelectedSite((prev) => (prev ? { ...prev, ...updated } : prev));
+      setSites((prev) =>
+        prev.map((s) => (s.id === updated.id ? { ...s, ...updated, template: s.template } : s)),
+      );
+      return;
+    }
+    try {
+      const full = await fetchPhase4Site(selectedSite.slug);
+      setSelectedSite(full);
+      setSites((prev) =>
+        prev.map((s) => (s.id === full.id ? { ...s, ...full, template: s.template } : s)),
+      );
+    } catch {
+      // keep current modal data if refresh fails
+    }
+  }
+
+  async function handleAddService(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedSite || savingService) return;
+
+    setSavingService(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updated = await addPhase4Service(selectedSite.id, {
+        title: serviceForm.title.trim(),
+        shortDescription: serviceForm.shortDescription.trim(),
+        fullDescription: serviceForm.fullDescription.trim(),
+        icon: serviceForm.icon.trim(),
+      });
+      await refreshSelectedSite(updated);
+      setServiceForm(emptyServiceForm);
+      setServiceDialogOpen(false);
+      setSuccess('Service added.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add service');
+    } finally {
+      setSavingService(false);
+    }
+  }
+
+  async function handleDeleteService() {
+    if (!selectedSite || deleteServiceIndex == null || deletingService) return;
+
+    setDeletingService(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const updated = await deletePhase4Service(selectedSite.id, deleteServiceIndex);
+      await refreshSelectedSite(updated);
+      setDeleteServiceIndex(null);
+      setSuccess('Service removed.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete service');
+    } finally {
+      setDeletingService(false);
+    }
+  }
+
+  const managedServices = selectedSite
+    ? parseServicesFromContent(selectedSite.servicesContent)
+    : [];
+
   const tabs: { id: SiteTab; label: string; content: string | null | undefined }[] =
     selectedSite
       ? [
@@ -930,7 +1035,65 @@ export function GeneratedSitesPage() {
                 ))}
               </div>
 
-              {activeTab === 'locations' ? (
+              {activeTab === 'services' ? (
+                <div className="space-y-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-slate-400">
+                      {managedServices.length} service{managedServices.length === 1 ? '' : 's'}
+                    </p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setServiceForm(emptyServiceForm);
+                        setServiceDialogOpen(true);
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Service
+                    </Button>
+                  </div>
+
+                  {managedServices.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-slate-500">
+                      No services yet. Add one to get started.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {managedServices.map((service, index) => (
+                        <div
+                          key={`${service.title}-${index}`}
+                          className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-slate-950/40 p-4 sm:flex-row sm:items-start sm:justify-between"
+                        >
+                          <div className="min-w-0">
+                            <div className="mb-1 flex flex-wrap items-center gap-2">
+                              <p className="font-medium text-white">{service.title || 'Untitled'}</p>
+                              {service.icon ? (
+                                <span className="rounded-md bg-slate-800 px-2 py-0.5 font-mono text-xs text-slate-400">
+                                  {service.icon}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="text-sm text-slate-400">
+                              {service.shortDescription || 'No description'}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                            onClick={() => setDeleteServiceIndex(index)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : activeTab === 'locations' ? (
                 <div className="space-y-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm text-slate-400">
@@ -1030,6 +1193,133 @@ export function GeneratedSitesPage() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={serviceDialogOpen}
+        onOpenChange={(open) => {
+          setServiceDialogOpen(open);
+          if (!open) setServiceForm(emptyServiceForm);
+        }}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Service</DialogTitle>
+            <DialogDescription>
+              Add a service to this site. It will appear on the services and home pages.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => void handleAddService(e)} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Title</label>
+              <input
+                type="text"
+                required
+                value={serviceForm.title}
+                onChange={(e) => setServiceForm((f) => ({ ...f, title: e.target.value }))}
+                className={inputClass}
+                placeholder="AC Repair"
+                disabled={savingService}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">
+                Short Description
+              </label>
+              <textarea
+                required
+                rows={2}
+                value={serviceForm.shortDescription}
+                onChange={(e) =>
+                  setServiceForm((f) => ({ ...f, shortDescription: e.target.value }))
+                }
+                className={inputClass}
+                placeholder="Fast, reliable AC repair for homes and businesses."
+                disabled={savingService}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">
+                Full Description
+              </label>
+              <textarea
+                required
+                rows={4}
+                value={serviceForm.fullDescription}
+                onChange={(e) =>
+                  setServiceForm((f) => ({ ...f, fullDescription: e.target.value }))
+                }
+                className={inputClass}
+                placeholder="Detailed description of this service offering."
+                disabled={savingService}
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Icon</label>
+              <input
+                type="text"
+                required
+                value={serviceForm.icon}
+                onChange={(e) => setServiceForm((f) => ({ ...f, icon: e.target.value }))}
+                className={inputClass}
+                placeholder="wrench or car"
+                disabled={savingService}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setServiceDialogOpen(false)}
+                disabled={savingService}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={savingService}>
+                {savingService ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Save
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deleteServiceIndex != null}
+        onOpenChange={(open) => {
+          if (!open && !deletingService) setDeleteServiceIndex(null);
+        }}
+      >
+        <AlertDialogContent
+          onEscapeKeyDown={(e) => {
+            if (deletingService) e.preventDefault();
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete service?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove{' '}
+              {deleteServiceIndex != null && managedServices[deleteServiceIndex]
+                ? `"${managedServices[deleteServiceIndex].title}"`
+                : 'this service'}{' '}
+              from the services and home pages.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingService}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="danger"
+              loading={deletingService}
+              disabled={deletingService}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDeleteService();
+              }}
+            >
+              {deletingService ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent key={editTarget?.id} className="max-w-2xl">

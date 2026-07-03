@@ -4,7 +4,7 @@ import { Navbar } from '@/src/components/Navbar';
 import { Footer } from '@/src/components/Footer';
 import { BackToTop } from '@/src/components/BackToTop';
 import { getLocationPages, getSiteBySlug } from '@/src/lib/api';
-import { parseJson, type HomeContent } from '@/src/lib/content';
+import { parseJson, type HomeContent, type ServicesContent } from '@/src/lib/content';
 import { resolveTheme } from '@/src/lib/theme';
 import type { SiteTheme } from '@/src/lib/types';
 import clsx from 'clsx';
@@ -38,7 +38,7 @@ export default async function SiteLayout({ children, params }: LayoutProps) {
   if (!site) notFound();
 
   const locations = await getLocationPages(slug);
-  const homeContent = parseJson<HomeContent>(site.homeContent, {});
+  const servicesContent = parseJson<ServicesContent>(site.servicesContent, {});
   const theme = resolveTheme(site);
   const fontClass =
     theme.fontStyle === 'classic'
@@ -55,7 +55,12 @@ export default async function SiteLayout({ children, params }: LayoutProps) {
 
   return (
     <div className={clsx('flex min-h-screen flex-col', fontClass)} style={cssVars}>
-      <Navbar site={site} theme={theme} homeContent={homeContent} locations={locations} />
+      <Navbar
+        site={site}
+        theme={theme}
+        servicesContent={servicesContent}
+        locations={locations}
+      />
       <main className="flex-1">{children}</main>
       <Footer site={site} theme={theme} />
       <BackToTop accentColor={theme.accentColor} />

@@ -6,9 +6,18 @@ dotenv.config();
 const prisma = new PrismaClient();
 
 const DEFAULT_SYSTEM_PROMPT =
-  'You are a professional website content writer for local businesses. Write in natural human tone. No corporate buzzwords like exceptional, leverage, seamless, innovative, utilize. Content must be specific to the business name, city and services. Sound like a real local business owner wrote it.';
+  'You are a professional website content writer for local businesses. Write in natural human tone. No corporate buzzwords like exceptional, leverage, seamless, innovative, utilize. Content must be specific to the business name, city and services. Generate comprehensive service lists of 6 to 8 services that are highly relevant and specific to this industry. Sound like a real local business owner wrote it.';
 
-function buildHomePageSchema(serviceTitles = ['Service One', 'Service Two', 'Service Three']) {
+function buildHomePageSchema(
+  serviceTitles = [
+    'Service One',
+    'Service Two',
+    'Service Three',
+    'Service Four',
+    'Service Five',
+    'Service Six',
+  ],
+) {
   return {
     hero: {
       heading: 'max 8 words powerful headline with business name',
@@ -20,7 +29,7 @@ function buildHomePageSchema(serviceTitles = ['Service One', 'Service Two', 'Ser
       paragraph1: '60-80 words introduce the business',
       paragraph2: '60-80 words what makes them different',
     },
-    services: serviceTitles.slice(0, 3).map((title) => ({
+    services: serviceTitles.slice(0, 8).map((title) => ({
       title: `max 4 words — use "${title}" as theme`,
       description: '25-35 words',
       icon: 'lucide icon name',
@@ -62,12 +71,15 @@ function buildServicesPageSchema(
     'Service Three',
     'Service Four',
     'Service Five',
+    'Service Six',
+    'Service Seven',
+    'Service Eight',
   ],
 ) {
   return {
     hero: { heading: 'max 8 words', subheading: 'max 20 words' },
     intro: '60-80 words overview of all services offered',
-    services: serviceTitles.slice(0, 5).map((title) => ({
+    services: serviceTitles.slice(0, 8).map((title) => ({
       title: `max 5 words — use "${title}" as theme`,
       shortDescription: '20-30 words',
       fullDescription: '60-80 words',
@@ -160,55 +172,103 @@ const SEED_SCHEMAS = [
     displayName: 'General Business',
     systemPrompt: DEFAULT_SYSTEM_PROMPT,
     isDefault: true,
-    homeServices: ['Primary Service', 'Secondary Service', 'Additional Service'],
+    homeServices: [
+      'Primary Service',
+      'Secondary Service',
+      'Additional Service',
+      'Consultation',
+      'Maintenance',
+      'Support Service',
+      'Specialty Work',
+      'Emergency Service',
+    ],
     servicesPageServices: [
       'Core Service',
       'Specialty Service',
       'Maintenance Service',
       'Consultation',
       'Support Service',
+      'Installation',
+      'Repair Service',
+      'Emergency Response',
     ],
   }),
   buildSchemaRecord({
     industry: 'automotive',
     displayName: 'Automotive',
     systemPrompt:
-      'You are writing for a car dealership. Focus on vehicle selection, financing options, test drives, service department, certified vehicles, trade-ins. Mention specific city. Friendly approachable tone.',
-    homeServices: ['Vehicle Sales', 'Auto Financing', 'Service and Repair'],
+      'You are writing for a car dealership. Focus on vehicle selection, financing options, test drives, service department, certified vehicles, trade-ins. Generate a comprehensive list of 6 to 8 services specific to automotive dealerships and auto service. Mention specific city. Friendly approachable tone.',
+    homeServices: [
+      'Vehicle Sales',
+      'Auto Financing',
+      'Service and Repair',
+      'Trade-In Appraisal',
+      'Vehicle Inspection',
+      'Test Drives',
+      'Parts Department',
+      'Certified Pre-Owned',
+    ],
     servicesPageServices: [
       'Vehicle Sales',
       'Auto Financing',
       'Service and Repair',
       'Trade-In Appraisal',
       'Vehicle Inspection',
+      'Test Drives',
+      'Parts Department',
+      'Certified Pre-Owned',
     ],
   }),
   buildSchemaRecord({
     industry: 'hvac',
     displayName: 'HVAC',
     systemPrompt:
-      'You are writing for an HVAC company. Focus on heating, cooling, emergency service, seasonal maintenance, energy efficiency, fast response time, licensed technicians. Mention specific city and nearby areas.',
-    homeServices: ['AC Repair', 'Heating Service', 'Emergency Calls'],
+      'You are writing for an HVAC company. Focus on heating, cooling, emergency service, seasonal maintenance, energy efficiency, fast response time, licensed technicians. Generate a comprehensive list of 6 to 8 services specific to HVAC and climate control. Mention specific city and nearby areas.',
+    homeServices: [
+      'AC Repair',
+      'Heating Service',
+      'Emergency Calls',
+      'Preventive Maintenance',
+      'System Installation',
+      'Duct Cleaning',
+      'Indoor Air Quality',
+      'Thermostat Upgrades',
+    ],
     servicesPageServices: [
       'AC Repair',
       'Heating Service',
       'Emergency Calls',
       'Preventive Maintenance',
       'System Installation',
+      'Duct Cleaning',
+      'Indoor Air Quality',
+      'Thermostat Upgrades',
     ],
   }),
   buildSchemaRecord({
     industry: 'business',
     displayName: 'Business Services',
     systemPrompt:
-      'You are writing for a professional business services company. Focus on consulting, client results, expertise, reliability, professional advice, business growth.',
-    homeServices: ['Business Consulting', 'Strategic Planning', 'Growth Strategy'],
+      'You are writing for a professional business services company. Focus on consulting, client results, expertise, reliability, professional advice, business growth. Generate a comprehensive list of 6 to 8 services specific to professional business consulting and support.',
+    homeServices: [
+      'Business Consulting',
+      'Strategic Planning',
+      'Growth Strategy',
+      'Financial Advisory',
+      'Operations Support',
+      'Market Research',
+      'Process Improvement',
+      'Leadership Coaching',
+    ],
     servicesPageServices: [
       'Business Consulting',
       'Strategic Planning',
       'Financial Advisory',
       'Operations Support',
       'Growth Strategy',
+      'Market Research',
+      'Process Improvement',
+      'Leadership Coaching',
     ],
   }),
 ];

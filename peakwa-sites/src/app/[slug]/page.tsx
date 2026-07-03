@@ -30,6 +30,7 @@ export default async function HomePage({ params }: PageProps) {
   const hero = content.hero ?? {};
   const about = content.about ?? {};
   const services = content.services ?? [];
+  const homeServices = services.length > 6 ? services.slice(0, 6) : services;
   const whyChooseUs = content.whyChooseUs ?? [];
   const cta = content.cta ?? {};
 
@@ -182,8 +183,8 @@ export default async function HomePage({ params }: PageProps) {
         <div className="mb-12 text-center">
           <h2 className="text-3xl font-bold text-gray-900">Our Services</h2>
         </div>
-        <div className="grid gap-8 md:grid-cols-3">
-          {services.map((service, i) => (
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          {homeServices.map((service, i) => (
             <article
               key={`${service.title}-${i}`}
               className="overflow-hidden rounded-2xl bg-white shadow-lg transition duration-300 hover:-translate-y-1 hover:shadow-xl"

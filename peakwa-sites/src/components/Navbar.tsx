@@ -6,13 +6,13 @@ import { usePathname } from 'next/navigation';
 import { ChevronDown, Menu, Phone, X } from 'lucide-react';
 import clsx from 'clsx';
 import type { GeneratedSite, LocationPage, SiteTheme } from '@/src/lib/types';
-import type { HomeContent } from '@/src/lib/content';
+import type { ServicesContent } from '@/src/lib/content';
 import { getTextColor } from '@/src/lib/theme';
 
 type NavbarProps = {
   site: GeneratedSite;
   theme: SiteTheme;
-  homeContent: HomeContent;
+  servicesContent: ServicesContent;
   locations: LocationPage[];
 };
 
@@ -28,14 +28,16 @@ function slugify(text: string): string {
   return text.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 }
 
-export function Navbar({ site, theme, homeContent, locations }: NavbarProps) {
+export function Navbar({ site, theme, servicesContent, locations }: NavbarProps) {
   const pathname = usePathname();
   const base = `/${site.slug}`;
   const [open, setOpen] = useState(false);
   const [servicesOpen, setServicesOpen] = useState(false);
   const [locationsOpen, setLocationsOpen] = useState(false);
 
-  const services = homeContent.services ?? [];
+  const services = servicesContent.services ?? [];
+  const dropdownServices = services.length > 8 ? services.slice(0, 8) : services;
+  const showViewAllServices = services.length > 8;
 
   function isActive(href: string) {
     if (href === '') return pathname === base || pathname === `${base}/`;
@@ -76,7 +78,7 @@ export function Navbar({ site, theme, homeContent, locations }: NavbarProps) {
                     <ChevronDown className="h-4 w-4" />
                   </button>
                   <div className="invisible absolute left-0 top-full z-50 min-w-[220px] rounded-xl border border-gray-100 bg-white py-2 opacity-0 shadow-xl transition-all group-hover:visible group-hover:opacity-100">
-                    {services.map((s) => (
+                    {dropdownServices.map((s) => (
                       <Link
                         key={s.title}
                         href={`${base}/services#${slugify(s.title || '')}`}
@@ -85,6 +87,15 @@ export function Navbar({ site, theme, homeContent, locations }: NavbarProps) {
                         {s.title}
                       </Link>
                     ))}
+                    {showViewAllServices ? (
+                      <Link
+                        href={`${base}/services`}
+                        className="block border-t border-gray-100 px-4 py-2 text-sm font-semibold hover:bg-gray-50"
+                        style={{ color: theme.accentColor }}
+                      >
+                        View All
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               );
@@ -180,8 +191,9 @@ export function Navbar({ site, theme, homeContent, locations }: NavbarProps) {
                 <ChevronDown className={clsx('h-4 w-4 transition', servicesOpen && 'rotate-180')} />
               </button>
             ) : null}
-            {servicesOpen
-              ? services.map((s) => (
+            {servicesOpen ? (
+              <>
+                {dropdownServices.map((s) => (
                   <Link
                     key={s.title}
                     href={`${base}/services#${slugify(s.title || '')}`}
@@ -190,8 +202,19 @@ export function Navbar({ site, theme, homeContent, locations }: NavbarProps) {
                   >
                     {s.title}
                   </Link>
-                ))
-              : null}
+                ))}
+                {showViewAllServices ? (
+                  <Link
+                    href={`${base}/services`}
+                    className="rounded-lg px-6 py-2 text-sm font-semibold"
+                    style={{ color: theme.accentColor }}
+                    onClick={() => setOpen(false)}
+                  >
+                    View All
+                  </Link>
+                ) : null}
+              </>
+            ) : null}
             {locations.length > 0 ? (
               <>
                 <button
