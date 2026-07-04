@@ -1,6 +1,6 @@
 import Link from 'next/link';
 
-export default function SiteNotFound() {
+export default function NotFound() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-gray-50 to-white px-6 text-center">
       <div
@@ -11,11 +11,10 @@ export default function SiteNotFound() {
       </div>
       <p className="text-sm font-semibold uppercase tracking-widest text-indigo-600">404</p>
       <h1 className="mt-2 text-4xl font-black tracking-tight text-gray-900 md:text-5xl">
-        Site not found
+        Page not found
       </h1>
       <p className="mt-4 max-w-md text-lg text-gray-600">
-        This business website was not found. The link may be incorrect or the site may no longer be
-        available.
+        The page you are looking for does not exist or may have been moved.
       </p>
       <Link
         href="/"
