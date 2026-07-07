@@ -1,6 +1,8 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Clock } from 'lucide-react';
 import { notFound } from 'next/navigation';
+import { SITE_BASE_URL } from '@/src/config/config';
 import { Breadcrumbs } from '@/src/components/Breadcrumbs';
 import { SectionWrapper } from '@/src/components/SectionWrapper';
 import { getSiteBySlug } from '@/src/lib/api';
@@ -8,6 +10,23 @@ import { parseJson, type BlogContent } from '@/src/lib/content';
 import { getTextColor, resolveTheme } from '@/src/lib/theme';
 
 type PageProps = { params: Promise<{ slug: string; postIndex: string }> };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug, postIndex } = await params;
+  const site = await getSiteBySlug(slug);
+  if (!site) return {};
+
+  const blog = parseJson<BlogContent>(site.blogContent, {});
+  const post = blog?.posts?.[Number.parseInt(postIndex, 10)];
+  if (!post) return {};
+
+  return {
+    title: `${post.title} | ${site.businessName}`,
+    description: post.excerpt,
+    alternates: { canonical: `${SITE_BASE_URL}/${site.slug}/blog/${postIndex}` },
+    robots: { index: false, follow: false },
+  };
+}
 
 export default async function BlogPostPage({ params }: PageProps) {
   const { slug, postIndex } = await params;

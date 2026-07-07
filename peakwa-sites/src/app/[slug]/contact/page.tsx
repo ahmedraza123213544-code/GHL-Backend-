@@ -1,5 +1,7 @@
+import type { Metadata } from 'next';
 import { Mail, MapPin, Phone } from 'lucide-react';
 import { notFound } from 'next/navigation';
+import { SITE_BASE_URL } from '@/src/config/config';
 import { Breadcrumbs } from '@/src/components/Breadcrumbs';
 import { ContactForm } from '@/src/components/ContactForm';
 import { HeroBanner } from '@/src/components/HeroBanner';
@@ -10,6 +12,24 @@ import { getSiteImages } from '@/src/lib/images';
 import { getTextColor, resolveTheme } from '@/src/lib/theme';
 
 type PageProps = { params: Promise<{ slug: string }> };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const site = await getSiteBySlug(slug);
+  if (!site) return {};
+
+  const contact = parseJson<ContactContent>(site.contactContent, {});
+
+  return {
+    title:
+      contact?.seo?.title || `Contact ${site.businessName} | ${site.city}, ${site.state}`,
+    description:
+      contact?.seo?.metaDescription ||
+      `Contact ${site.businessName} in ${site.city} ${site.state}`,
+    alternates: { canonical: `${SITE_BASE_URL}/${site.slug}/contact` },
+    robots: { index: false, follow: false },
+  };
+}
 
 export default async function ContactPage({ params }: PageProps) {
   const { slug } = await params;

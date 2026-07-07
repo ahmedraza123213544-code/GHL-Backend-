@@ -1,6 +1,8 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, Clock } from 'lucide-react';
 import { notFound } from 'next/navigation';
+import { SITE_BASE_URL } from '@/src/config/config';
 import { Breadcrumbs } from '@/src/components/Breadcrumbs';
 import { HeroBanner } from '@/src/components/HeroBanner';
 import { SectionWrapper } from '@/src/components/SectionWrapper';
@@ -11,6 +13,23 @@ import { getSiteImages } from '@/src/lib/images';
 import { getTextColor, hexToRgb, resolveTheme } from '@/src/lib/theme';
 
 type PageProps = { params: Promise<{ slug: string }> };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const site = await getSiteBySlug(slug);
+  if (!site) return {};
+
+  const blog = parseJson<BlogContent>(site.blogContent, {});
+
+  return {
+    title: blog?.seo?.title || `Blog | ${site.businessName} | ${site.city}, ${site.state}`,
+    description:
+      blog?.seo?.metaDescription ||
+      `Latest updates and tips from ${site.businessName} in ${site.city} ${site.state}`,
+    alternates: { canonical: `${SITE_BASE_URL}/${site.slug}/blog` },
+    robots: { index: false, follow: false },
+  };
+}
 
 function colorWithOpacity(hex: string, opacity: number) {
   const { r, g, b } = hexToRgb(hex);

@@ -1,5 +1,7 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { SITE_BASE_URL } from '@/src/config/config';
 import { Phone } from 'lucide-react';
 import { CtaBanner } from '@/src/components/CtaBanner';
 import { SectionWrapper } from '@/src/components/SectionWrapper';
@@ -13,6 +15,23 @@ import { darkenHex, getTextColor, hexToRgb, resolveTheme } from '@/src/lib/theme
 type PageProps = {
   params: Promise<{ slug: string }>;
 };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const site = await getSiteBySlug(slug);
+  if (!site) return {};
+
+  const home = parseJson<HomeContent>(site.homeContent, {});
+
+  return {
+    title: home?.seo?.title || `${site.businessName} | ${site.city}, ${site.state}`,
+    description:
+      home?.seo?.metaDescription ||
+      `${site.businessName} serving ${site.city} ${site.state}`,
+    alternates: { canonical: `${SITE_BASE_URL}/${site.slug}` },
+    robots: { index: false, follow: false },
+  };
+}
 
 function colorWithOpacity(hex: string, opacity: number) {
   const { r, g, b } = hexToRgb(hex);

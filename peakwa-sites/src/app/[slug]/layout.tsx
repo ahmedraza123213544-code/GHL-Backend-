@@ -4,7 +4,7 @@ import { Navbar } from '@/src/components/Navbar';
 import { Footer } from '@/src/components/Footer';
 import { BackToTop } from '@/src/components/BackToTop';
 import { getLocationPages, getSiteBySlug } from '@/src/lib/api';
-import { parseJson, type HomeContent, type ServicesContent } from '@/src/lib/content';
+import { parseJson, type ServicesContent } from '@/src/lib/content';
 import { resolveTheme } from '@/src/lib/theme';
 import type { SiteTheme } from '@/src/lib/types';
 import clsx from 'clsx';
@@ -19,15 +19,8 @@ export async function generateMetadata({ params }: LayoutProps): Promise<Metadat
   const site = await getSiteBySlug(slug);
   if (!site) return { title: 'Site Not Found' };
 
-  const home = parseJson<HomeContent>(site.homeContent, {});
-  const seo = home.seo;
-
   return {
-    title: seo?.title || `${site.businessName} | ${site.city}, ${site.state}`,
-    description:
-      seo?.metaDescription ||
-      site.description ||
-      `Professional ${site.industry} services in ${site.city}, ${site.state}.`,
+    title: site.businessName,
     robots: { index: false, follow: false },
   };
 }

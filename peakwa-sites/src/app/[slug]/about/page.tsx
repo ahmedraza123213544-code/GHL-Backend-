@@ -1,4 +1,6 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { SITE_BASE_URL } from '@/src/config/config';
 import { Breadcrumbs } from '@/src/components/Breadcrumbs';
 import { HeroBanner } from '@/src/components/HeroBanner';
 import { SectionWrapper } from '@/src/components/SectionWrapper';
@@ -9,6 +11,23 @@ import { getSiteImages } from '@/src/lib/images';
 import { hexToRgb, resolveTheme } from '@/src/lib/theme';
 
 type PageProps = { params: Promise<{ slug: string }> };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const site = await getSiteBySlug(slug);
+  if (!site) return {};
+
+  const about = parseJson<AboutContent>(site.aboutContent, {});
+
+  return {
+    title: about?.seo?.title || `About ${site.businessName} | ${site.city}, ${site.state}`,
+    description:
+      about?.seo?.metaDescription ||
+      `Learn about ${site.businessName} in ${site.city} ${site.state}`,
+    alternates: { canonical: `${SITE_BASE_URL}/${site.slug}/about` },
+    robots: { index: false, follow: false },
+  };
+}
 
 function colorWithOpacity(hex: string, opacity: number) {
   const { r, g, b } = hexToRgb(hex);

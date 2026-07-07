@@ -1,4 +1,6 @@
+import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import { SITE_BASE_URL } from '@/src/config/config';
 import { Breadcrumbs } from '@/src/components/Breadcrumbs';
 import { ContactForm } from '@/src/components/ContactForm';
 import { CtaBanner } from '@/src/components/CtaBanner';
@@ -8,6 +10,21 @@ import { parseJson, type LocationContent } from '@/src/lib/content';
 import { getTextColor, resolveTheme } from '@/src/lib/theme';
 
 type PageProps = { params: Promise<{ slug: string; locationSlug: string }> };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug, locationSlug } = await params;
+  const site = await getSiteBySlug(slug);
+  if (!site) return {};
+
+  const locationName = locationSlug.replace(/-/g, ' ');
+
+  return {
+    title: `${site.businessName} | ${locationName} | ${site.state}`,
+    description: `${site.businessName} serving ${locationName} area in ${site.state}`,
+    alternates: { canonical: `${SITE_BASE_URL}/${site.slug}/${locationSlug}` },
+    robots: { index: false, follow: false },
+  };
+}
 
 export default async function LocationPage({ params }: PageProps) {
   const { slug, locationSlug } = await params;
