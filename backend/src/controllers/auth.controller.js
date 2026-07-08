@@ -2,7 +2,7 @@ import axios from 'axios';
 import { env } from '../config/env.js';
 import prisma from '../database/client.js';
 import { exchangeCodeAndSaveTokens, getGoogleConsentUrl, refreshAccessTokenForLocation } from '../services/googleAuth.service.js';
-import { listGoogleAccountsForLocation } from '../services/googleAccounts.service.js';
+import { listGoogleAccountsForLocation, listGoogleLocationsForAccount } from '../services/googleAccounts.service.js';
 import { AppError } from '../utils/AppError.js';
 import jwt from 'jsonwebtoken';
 
@@ -53,6 +53,34 @@ export async function getGoogleAccounts(req, res, next) {
     return res.json({
       success: true,
       data: { accounts },
+      requestId: req.requestId,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function getGoogleLocations(req, res, next) {
+  try {
+    const locationId = req.query.locationId != null ? String(req.query.locationId) : '';
+    const accountId = req.query.accountId != null ? String(req.query.accountId) : '';
+
+    if (!locationId) {
+      throw new AppError('Query parameter `locationId` is required.', 400, {
+        code: 'INVALID_QUERY',
+      });
+    }
+    if (!accountId) {
+      throw new AppError('Query parameter `accountId` is required.', 400, {
+        code: 'INVALID_QUERY',
+      });
+    }
+
+    const locations = await listGoogleLocationsForAccount(locationId, accountId);
+
+    return res.json({
+      success: true,
+      data: { locations },
       requestId: req.requestId,
     });
   } catch (e) {
