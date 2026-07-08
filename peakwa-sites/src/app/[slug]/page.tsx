@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { SITE_BASE_URL } from '@/src/config/config';
 import { Phone } from 'lucide-react';
 import { CtaBanner } from '@/src/components/CtaBanner';
+import { LocalBusinessSchema } from '@/src/components/SchemaMarkup';
 import { SectionWrapper } from '@/src/components/SectionWrapper';
 import { SiteImage } from '@/src/components/SiteImage';
 import { getSiteBySlug } from '@/src/lib/api';
@@ -64,6 +65,7 @@ export default async function HomePage({ params }: PageProps) {
 
   return (
     <>
+      <LocalBusinessSchema site={site} />
       <section
         className="relative flex min-h-screen items-center overflow-hidden"
         style={

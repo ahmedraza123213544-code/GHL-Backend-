@@ -4,6 +4,7 @@ import { SITE_BASE_URL } from '@/src/config/config';
 import { Breadcrumbs } from '@/src/components/Breadcrumbs';
 import { CtaBanner } from '@/src/components/CtaBanner';
 import { HeroBanner } from '@/src/components/HeroBanner';
+import { ServiceSchema } from '@/src/components/SchemaMarkup';
 import { SectionWrapper } from '@/src/components/SectionWrapper';
 import { SiteImage } from '@/src/components/SiteImage';
 import { getSiteBySlug } from '@/src/lib/api';
@@ -54,6 +55,7 @@ export default async function ServicesPage({ params }: PageProps) {
 
   return (
     <>
+      <ServiceSchema businessName={site.businessName} services={services} />
       <HeroBanner
         site={site}
         heroImage={images.hero}
